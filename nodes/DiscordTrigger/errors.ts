@@ -31,6 +31,7 @@ export function httpStatusOf(error: unknown): number | undefined {
 		statusCode?: unknown;
 		status?: unknown;
 		response?: { status?: unknown; statusCode?: unknown };
+		extra?: { status?: unknown };
 	};
 	for (const value of [
 		candidate.httpCode,
@@ -38,6 +39,7 @@ export function httpStatusOf(error: unknown): number | undefined {
 		candidate.status,
 		candidate.response?.status,
 		candidate.response?.statusCode,
+		candidate.extra?.status,
 	]) {
 		const status = Number(value);
 		if (Number.isInteger(status) && status > 0) return status;

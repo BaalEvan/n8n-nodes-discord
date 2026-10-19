@@ -28,6 +28,7 @@ export interface FakeTrigger extends ITriggerFunctions {
 	sentMessages: string[];
 	staticData: IDataObject;
 	gatewayBotHttpStatus?: number;
+	gatewayBotErrorCode?: string;
 	failMessagePosts: number;
 	failChannelPosts: number;
 	messagePostGate: Promise<void> | null;
@@ -50,6 +51,16 @@ const DEFAULT_PARAMS: Record<string, unknown> = {
 	emitRawPayload: false,
 	connectionName: 'default',
 };
+
+function networkError(code: string, request: FakeRequest): Error {
+	return Object.assign(new Error(`getaddrinfo ${code} discord.com`), {
+		isAxiosError: true,
+		code,
+		config: { method: request.method, url: request.url, headers: { ...request.headers } },
+		request: { _header: `GET /api/v10/gateway/bot
+Authorization: ${request.headers?.Authorization}` },
+	});
+}
 
 function httpError(status: number, request: FakeRequest): Error {
 	return Object.assign(new Error(`Request failed with status code ${status}`), {
@@ -83,6 +94,9 @@ export function createFakeTrigger(opts: FakeTriggerOptions): FakeTrigger {
 			throw httpError(401, request);
 		}
 		if (method === 'GET' && url.endsWith('/gateway/bot')) {
+			if (trigger.gatewayBotErrorCode !== undefined) {
+				throw networkError(trigger.gatewayBotErrorCode, request);
+			}
 			if (trigger.gatewayBotHttpStatus !== undefined) {
 				if (helper === 'httpRequest') throw httpError(trigger.gatewayBotHttpStatus, request);
 				throw Object.assign(new Error('Authorization failed - please check your credentials'), {

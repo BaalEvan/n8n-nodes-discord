@@ -421,7 +421,11 @@ export class DiscordGatewayConnection {
 						`Discord rejected the bot token (HTTP ${status} from /gateway/bot). Check the Discord Gateway Bot API credential.`,
 					);
 				}
-				throw error;
+				const code = (error as { code?: unknown } | null)?.code;
+				const reason = error instanceof Error ? error.message : String(error);
+				throw new ApplicationError(`Discord REST request failed: ${reason}`, {
+					extra: { status, code: typeof code === 'string' ? code : undefined },
+				});
 			});
 
 		const data = response as IDataObject;
