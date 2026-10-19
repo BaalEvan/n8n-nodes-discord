@@ -10,8 +10,7 @@ export class DiscordOAuth2Api implements ICredentialType {
 
 	extends = ['oAuth2Api'];
 
-	// eslint-disable-next-line n8n-nodes-base/cred-class-field-display-name-miscased, n8n-nodes-base/cred-class-field-display-name-missing-api, n8n-nodes-base/cred-class-field-display-name-missing-oauth2
-	displayName = 'Discord OAuth2 API (Gateway fork)';
+	displayName = 'Discord Gateway OAuth2 API';
 
 	icon: Icon = { light: 'file:../icons/discord.svg', dark: 'file:../icons/discord.dark.svg' };
 

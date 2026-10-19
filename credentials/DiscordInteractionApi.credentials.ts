@@ -3,8 +3,7 @@ import type { Icon, ICredentialTestRequest, ICredentialType, INodeProperties } f
 export class DiscordInteractionApi implements ICredentialType {
 	name = 'discordGatewayInteractionApi';
 
-	// eslint-disable-next-line n8n-nodes-base/cred-class-field-display-name-miscased, n8n-nodes-base/cred-class-field-display-name-missing-api
-	displayName = 'Discord Interaction API (Gateway fork)';
+	displayName = 'Discord Gateway Interaction API';
 
 	icon: Icon = { light: 'file:../icons/discord.svg', dark: 'file:../icons/discord.dark.svg' };
 

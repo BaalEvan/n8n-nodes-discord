@@ -33,14 +33,10 @@ describe('package identity', () => {
 		expect(new DiscordInteractionApi().name).toBe('discordGatewayInteractionApi');
 	});
 
-	it('credential display names carry the fork suffix', () => {
-		for (const cred of [
-			new DiscordBotApi(),
-			new DiscordOAuth2Api(),
-			new DiscordWebhookApi(),
-			new DiscordInteractionApi(),
-		]) {
-			expect(cred.displayName.endsWith(' (Gateway fork)')).toBe(true);
-		}
+	it('credential display names are distinct from upstream', () => {
+		expect(new DiscordBotApi().displayName).toBe('Discord Gateway Bot API');
+		expect(new DiscordOAuth2Api().displayName).toBe('Discord Gateway OAuth2 API');
+		expect(new DiscordWebhookApi().displayName).toBe('Discord Gateway Webhook API');
+		expect(new DiscordInteractionApi().displayName).toBe('Discord Gateway Interaction API');
 	});
 });
