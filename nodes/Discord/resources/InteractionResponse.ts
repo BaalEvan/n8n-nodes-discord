@@ -585,7 +585,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: messageFieldOperations,
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
@@ -604,7 +603,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: messageFieldOperations,
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
@@ -622,7 +620,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: messageFieldOperations,
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
@@ -641,7 +638,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: messageFieldOperations,
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
@@ -660,7 +656,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: messageFieldOperations,
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
@@ -679,7 +674,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: messageFieldOperations,
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
@@ -697,7 +691,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: messageFieldOperations,
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
@@ -715,7 +708,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: messageFieldOperations,
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
@@ -733,7 +725,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: messageFieldOperations,
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
@@ -751,7 +742,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: messageFieldOperations,
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
@@ -769,7 +759,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: messageFieldOperations,
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
@@ -787,7 +776,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: messageFieldOperations,
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
@@ -809,7 +797,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: messageFieldOperations,
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
 					INTERACTION_CALLBACK_TYPE.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
@@ -832,7 +819,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: ['createInitialCallback', 'createFollowupMessage'],
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
@@ -855,7 +841,6 @@ export const interactionResponseFields: INodeProperties[] = [
 				operation: ['createInitialCallback', 'createFollowupMessage'],
 			},
 			hide: {
-				operation: ['createInitialCallback'],
 				responseType: [
 					INTERACTION_CALLBACK_TYPE.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE,
 					INTERACTION_CALLBACK_TYPE.DEFERRED_UPDATE_MESSAGE,
