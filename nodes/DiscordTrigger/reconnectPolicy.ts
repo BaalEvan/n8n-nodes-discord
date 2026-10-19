@@ -29,6 +29,11 @@ export class IdentifyBudget {
 		this.records.push(this.now());
 	}
 
+	count(): number {
+		this.prune();
+		return this.records.length;
+	}
+
 	msUntilAvailable(): number {
 		this.prune();
 		if (this.records.length < this.limit) return 0;
