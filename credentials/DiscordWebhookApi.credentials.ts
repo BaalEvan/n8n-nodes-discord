@@ -1,9 +1,10 @@
 import type { Icon, ICredentialTestRequest, ICredentialType, INodeProperties } from 'n8n-workflow';
 
 export class DiscordWebhookApi implements ICredentialType {
-	name = 'discordWebhookApi';
+	name = 'discordGatewayWebhookApi';
 
-	displayName = 'Discord Webhook API';
+	// eslint-disable-next-line n8n-nodes-base/cred-class-field-display-name-miscased, n8n-nodes-base/cred-class-field-display-name-missing-api
+	displayName = 'Discord Webhook API (Gateway fork)';
 
 	icon: Icon = { light: 'file:../icons/discord.svg', dark: 'file:../icons/discord.dark.svg' };
 

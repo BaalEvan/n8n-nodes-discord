@@ -1,9 +1,12 @@
 {
-  "name": "@yuniruyuni/n8n-nodes-discord",
-  "version": "0.4.5",
+  "name": "@baalevan/n8n-nodes-discord",
+  "version": "0.5.0",
   "description": "n8n node for Discord API integration. Supports Discord REST operations, webhooks, interactions, and Gateway triggers.",
   "license": "MIT",
-  "homepage": "https://github.com/yuniruyuni/n8n-nodes-discord",
+  "homepage": "https://github.com/BaalEvan/n8n-nodes-discord",
+  "bugs": {
+    "url": "https://github.com/BaalEvan/n8n-nodes-discord/issues"
+  },
   "keywords": [
     "n8n-community-node-package",
     "n8n",
@@ -35,7 +38,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=21.0.0"
+    "node": ">=22.0.0"
   },
   "n8n": {
     "n8nNodesApiVersion": 1,

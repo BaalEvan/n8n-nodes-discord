@@ -81,7 +81,7 @@ export class DiscordTrigger implements INodeType {
 		outputs: [NodeConnectionTypes.Main],
 		credentials: [
 			{
-				name: 'discordBotApi',
+				name: 'discordGatewayBotApi',
 				required: true,
 			},
 		],

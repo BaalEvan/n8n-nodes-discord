@@ -6,11 +6,12 @@ import type {
 } from 'n8n-workflow';
 
 export class DiscordOAuth2Api implements ICredentialType {
-	name = 'discordOAuth2Api';
+	name = 'discordGatewayOAuth2Api';
 
 	extends = ['oAuth2Api'];
 
-	displayName = 'Discord OAuth2 API';
+	// eslint-disable-next-line n8n-nodes-base/cred-class-field-display-name-miscased, n8n-nodes-base/cred-class-field-display-name-missing-api, n8n-nodes-base/cred-class-field-display-name-missing-oauth2
+	displayName = 'Discord OAuth2 API (Gateway fork)';
 
 	icon: Icon = { light: 'file:../icons/discord.svg', dark: 'file:../icons/discord.dark.svg' };
 

@@ -47,12 +47,12 @@ export class Discord implements INodeType {
 		outputs: [NodeConnectionTypes.Main],
 		credentials: [
 			{
-				name: 'discordBotApi',
+				name: 'discordGatewayBotApi',
 				required: true,
 				displayOptions: { show: { authentication: ['bot'] } },
 			},
 			{
-				name: 'discordOAuth2Api',
+				name: 'discordGatewayOAuth2Api',
 				required: true,
 				displayOptions: { show: { authentication: ['oauth2'] } },
 			},

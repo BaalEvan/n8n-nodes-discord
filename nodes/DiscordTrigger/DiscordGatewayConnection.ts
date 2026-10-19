@@ -22,7 +22,7 @@ export class DiscordGatewayConnection {
 	async connect(): Promise<void> {
 		if (this.closing) return;
 
-		const credentials = await this.trigger.getCredentials('discordBotApi');
+		const credentials = await this.trigger.getCredentials('discordGatewayBotApi');
 		const token = credentials.botToken as string;
 		const autoCalculateIntents = this.trigger.getNodeParameter('autoCalculateIntents') as boolean;
 		const selectedIntents = autoCalculateIntents
@@ -72,7 +72,7 @@ export class DiscordGatewayConnection {
 	private async getGatewayUrl(): Promise<string> {
 		const response = await this.trigger.helpers.httpRequestWithAuthentication.call(
 			this.trigger,
-			'discordBotApi',
+			'discordGatewayBotApi',
 			{
 				method: 'GET',
 				url: `${DISCORD_API_BASE_URL}/gateway/bot`,

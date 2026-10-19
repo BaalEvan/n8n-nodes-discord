@@ -156,7 +156,7 @@ export class DiscordWebhookEventTrigger implements INodeType {
 		outputs: [NodeConnectionTypes.Main],
 		credentials: [
 			{
-				name: 'discordInteractionApi',
+				name: 'discordGatewayInteractionApi',
 				required: true,
 			},
 		],
@@ -236,7 +236,7 @@ export class DiscordWebhookEventTrigger implements INodeType {
 
 	async webhook(this: IWebhookFunctions): Promise<IWebhookResponseData> {
 		const credentials = await this.getCredentials<{ applicationId: string; publicKey: string }>(
-			'discordInteractionApi',
+			'discordGatewayInteractionApi',
 		);
 		const publicKey = (credentials.publicKey ?? '').toString();
 

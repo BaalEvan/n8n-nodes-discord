@@ -7,9 +7,10 @@ import type {
 } from 'n8n-workflow';
 
 export class DiscordBotApi implements ICredentialType {
-	name = 'discordBotApi';
+	name = 'discordGatewayBotApi';
 
-	displayName = 'Discord Bot API';
+	// eslint-disable-next-line n8n-nodes-base/cred-class-field-display-name-miscased, n8n-nodes-base/cred-class-field-display-name-missing-api
+	displayName = 'Discord Bot API (Gateway fork)';
 
 	icon: Icon = { light: 'file:../icons/discord.svg', dark: 'file:../icons/discord.dark.svg' };
 
