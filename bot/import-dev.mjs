@@ -1,12 +1,43 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { commandTemplateNames, helperTemplateNames } from './build-workflows.mjs';
+import {
+	commandTemplateNames,
+	helperTemplateNames,
+	listenerTemplateNames,
+} from './build-workflows.mjs';
 
 export const TABLES = {
 	discord_commands: ['name', 'workflowId', 'definition'],
 	discord_config: ['key', 'value'],
 	discord_listeners: ['event', 'workflowId', 'name'],
+	sync_pairings: [
+		'pairingId',
+		'aGuildId',
+		'aChannelId',
+		'aWebhookId',
+		'aWebhookToken',
+		'aTag',
+		'bGuildId',
+		'bChannelId',
+		'bWebhookId',
+		'bWebhookToken',
+		'bTag',
+		'createdBy',
+		{ name: 'createdUtc', type: 'date' },
+		'note',
+	],
+	sync_message_map: [
+		'sourceMessageId',
+		'pairingId',
+		'mirrorChannelId',
+		'mirrorMessageId',
+		{ name: 'createdUtc', type: 'date' },
+	],
+};
+
+export const LISTENERS = {
+	'listeners/sync-mirror': { name: 'Sync Mirror', events: ['create', 'update', 'delete'] },
 };
 
 export const DEV_DEFAULTS = {
@@ -25,6 +56,7 @@ export const ORDER = [
 	'reload-commands',
 	...helperTemplateNames(BOT_DIR),
 	...commandTemplateNames(BOT_DIR),
+	...listenerTemplateNames(BOT_DIR),
 	'router',
 ];
 export const HELPER_CONFIG_KEYS = { 'helpers/clickup-get-task': 'clickupHelperWorkflowId' };
@@ -140,14 +172,16 @@ export function client(baseUrl, apiKey) {
 	return { call, all };
 }
 
-async function ensureTable(api, name, columns) {
+function columnSpec(c) {
+	return typeof c === 'string' ? { name: c, type: 'string' } : { name: c.name, type: c.type };
+}
+
+async function ensureTable(api, name, rawColumns) {
+	const columns = rawColumns.map(columnSpec);
 	const filter = encodeURIComponent(JSON.stringify({ name }));
 	const found = (await api.all(`/data-tables?filter=${filter}`)).find((t) => t.name === name);
 	if (!found) {
-		const created = await api.call('POST', '/data-tables', {
-			name,
-			columns: columns.map((c) => ({ name: c, type: 'string' })),
-		});
+		const created = await api.call('POST', '/data-tables', { name, columns });
 		return { id: created.id, created: true, added: [] };
 	}
 	const existing = await api.call('GET', `/data-tables/${found.id}/columns`);
@@ -156,9 +190,9 @@ async function ensureTable(api, name, columns) {
 	);
 	const added = [];
 	for (const c of columns) {
-		if (!have.has(c)) {
-			await api.call('POST', `/data-tables/${found.id}/columns`, { name: c, type: 'string' });
-			added.push(c);
+		if (!have.has(c.name)) {
+			await api.call('POST', `/data-tables/${found.id}/columns`, c);
+			added.push(c.name);
 		}
 	}
 	return { id: found.id, created: false, added };
@@ -169,6 +203,21 @@ async function upsertConfig(api, tableId, key, value) {
 		filter: { type: 'and', filters: [{ columnName: 'key', condition: 'eq', value: key }] },
 		data: { key, value },
 	});
+}
+
+async function registerListener(api, tableId, workflowId, { name, events }) {
+	for (const event of events) {
+		await api.call('POST', `/data-tables/${tableId}/rows/upsert`, {
+			filter: {
+				type: 'and',
+				filters: [
+					{ columnName: 'event', condition: 'eq', value: event },
+					{ columnName: 'name', condition: 'eq', value: name },
+				],
+			},
+			data: { event, workflowId, name },
+		});
+	}
 }
 
 async function readConfig(api, tableId) {
@@ -260,6 +309,12 @@ export async function importDev({
 		if (key === 'sync') await upsertConfig(api, cfgTable, 'syncWorkflowId', saved.id);
 		if (HELPER_CONFIG_KEYS[key])
 			await upsertConfig(api, cfgTable, HELPER_CONFIG_KEYS[key], saved.id);
+		if (LISTENERS[key]) {
+			await registerListener(api, tables.discord_listeners, saved.id, LISTENERS[key]);
+			log(
+				`discord_listeners: ${LISTENERS[key].name} -> ${saved.id} (${LISTENERS[key].events.join(', ')})`,
+			);
+		}
 		const publish = PUBLISH.has(key) && state !== 'unchanged';
 		if (publish) await api.call('POST', `/workflows/${saved.id}/publish`, {});
 		result[key] = { id: saved.id, name: body.name, state, published: PUBLISH.has(key) };

@@ -1,5 +1,13 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
-import { importDev, prepareWorkflow, sameContent, ORDER, PUBLISH } from '../import-dev.mjs';
+import {
+	importDev,
+	prepareWorkflow,
+	sameContent,
+	ORDER,
+	PUBLISH,
+	TABLES,
+	LISTENERS,
+} from '../import-dev.mjs';
 import { writeAll } from '../build-workflows.mjs';
 import { buildAll } from '../build-workflows.mjs';
 const path = require('path');
@@ -206,11 +214,11 @@ describe('importDev skip', () => {
 		expect(helperSave).toBeLessThan(clSave);
 	});
 
-	it('tags only the six command workflows, not the helper', async () => {
+	it('tags only the seven command workflows, not the helper or the listener', async () => {
 		const calls = stubApi();
 		await run(['router', 'sync']);
 		const tagged = calls.filter((c) => c.method === 'PUT' && c.p.endsWith('/tags'));
-		expect(tagged).toHaveLength(6);
+		expect(tagged).toHaveLength(7);
 	});
 
 	it('adds webhookBase only when it is missing', async () => {
@@ -249,10 +257,112 @@ describe('importDev skip', () => {
 		expect(ORDER.indexOf('commands/changelog')).toBeLessThan(ORDER.indexOf('router'));
 	});
 
+	it('creates the sync tables with typed columns', async () => {
+		const calls = stubApi();
+		await run(['router', 'sync']);
+		const created = Object.fromEntries(
+			calls
+				.filter((c) => c.method === 'POST' && c.p === '/data-tables')
+				.map((c) => [c.body.name, c.body.columns]),
+		);
+		expect(created.sync_pairings.map((c) => c.name)).toEqual([
+			'pairingId',
+			'aGuildId',
+			'aChannelId',
+			'aWebhookId',
+			'aWebhookToken',
+			'aTag',
+			'bGuildId',
+			'bChannelId',
+			'bWebhookId',
+			'bWebhookToken',
+			'bTag',
+			'createdBy',
+			'createdUtc',
+			'note',
+		]);
+		const types = (name) => Object.fromEntries(created[name].map((c) => [c.name, c.type]));
+		expect(types('sync_pairings').createdUtc).toBe('date');
+		expect(types('sync_pairings').aChannelId).toBe('string');
+		expect(types('sync_message_map')).toEqual({
+			sourceMessageId: 'string',
+			pairingId: 'string',
+			mirrorChannelId: 'string',
+			mirrorMessageId: 'string',
+			createdUtc: 'date',
+		});
+		expect(created.discord_config.every((c) => c.type === 'string')).toBe(true);
+	});
+
+	it('adds a missing column with its type', async () => {
+		const calls = stubApi();
+		const base = globalThis.fetch;
+		vi.stubGlobal('fetch', async (url, init = {}) => {
+			const p = new URL(url).pathname;
+			if ((init.method || 'GET') === 'GET' && p === '/api/v1/data-tables') {
+				return {
+					ok: true,
+					status: 200,
+					text: async () => JSON.stringify({ data: [{ id: 'T1', name: 'sync_message_map' }] }),
+				};
+			}
+			return base(url, init);
+		});
+		await run(['router', 'sync']);
+		const added = calls.filter((c) => c.method === 'POST' && c.p === '/data-tables/T1/columns');
+		expect(added.find((c) => c.body.name === 'createdUtc').body).toEqual({
+			name: 'createdUtc',
+			type: 'date',
+		});
+	});
+
+	it('imports the sync command and the listener before the router, published', () => {
+		for (const key of ['commands/sync', 'listeners/sync-mirror']) {
+			expect(ORDER).toContain(key);
+			expect(PUBLISH.has(key)).toBe(true);
+			expect(ORDER.indexOf(key)).toBeLessThan(ORDER.indexOf('router'));
+		}
+		expect(TABLES.sync_pairings).toBeTruthy();
+		expect(TABLES.sync_message_map).toBeTruthy();
+		expect(LISTENERS['listeners/sync-mirror']).toEqual({
+			name: 'Sync Mirror',
+			events: ['create', 'update', 'delete'],
+		});
+	});
+
+	it('registers the listener for create, update and delete', async () => {
+		const calls = stubApi();
+		const result = await run(['router', 'sync']);
+		const id = result.workflows['listeners/sync-mirror'].id;
+		const rows = calls
+			.filter((c) => c.p.endsWith('/rows/upsert') && c.body.data.name === 'Sync Mirror')
+			.map((c) => c.body);
+		expect(rows.map((r) => r.data)).toEqual([
+			{ event: 'create', workflowId: id, name: 'Sync Mirror' },
+			{ event: 'update', workflowId: id, name: 'Sync Mirror' },
+			{ event: 'delete', workflowId: id, name: 'Sync Mirror' },
+		]);
+		expect(rows[0].filter).toEqual({
+			type: 'and',
+			filters: [
+				{ columnName: 'event', condition: 'eq', value: 'create' },
+				{ columnName: 'name', condition: 'eq', value: 'Sync Mirror' },
+			],
+		});
+	});
+
+	it('does not register a skipped listener', async () => {
+		const calls = stubApi();
+		await run(['router', 'sync', 'listeners/sync-mirror']);
+		expect(
+			calls.filter((c) => c.p.endsWith('/rows/upsert') && c.body.data.name === 'Sync Mirror'),
+		).toEqual([]);
+	});
+
 	it('rejects an unknown key and lists the valid ones, before any request', async () => {
 		const calls = stubApi();
 		await expect(run(['routr'])).rejects.toThrow(
-			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, helpers/clickup-get-task, commands/changelog, commands/cl, commands/parse, commands/preview, router',
+			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, helpers/clickup-get-task, commands/changelog, commands/cl, commands/parse, commands/preview, commands/sync, listeners/sync-mirror, router',
 		);
 		expect(calls).toEqual([]);
 	});

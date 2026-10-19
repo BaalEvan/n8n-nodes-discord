@@ -1,0 +1,2066 @@
+{
+	"name": "Discord Command: sync",
+	"nodes": [
+		{
+			"id": "858e1706-f4c2-441c-a46b-1fbe10009aba",
+			"name": "When called by another workflow",
+			"type": "n8n-nodes-base.executeWorkflowTrigger",
+			"typeVersion": 1.3,
+			"position": [
+				0,
+				600
+			],
+			"parameters": {
+				"inputSource": "passthrough"
+			}
+		},
+		{
+			"id": "7cb36842-bf2c-4ea3-aebd-12f9424de931",
+			"name": "Command Definition",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				220,
+				600
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "{\n  \"name\": \"sync\",\n  \"description\": \"Bridge this channel with a channel on another server\",\n  \"options\": [\n    {\n      \"type\": 1,\n      \"name\": \"start\",\n      \"description\": \"Pair this channel with a remote channel by id\",\n      \"options\": [\n        {\n          \"type\": 3,\n          \"name\": \"channel_id\",\n          \"description\": \"The remote channel's id (Developer Mode → Copy Channel ID)\",\n          \"required\": true\n        },\n        {\n          \"type\": 3,\n          \"name\": \"note\",\n          \"description\": \"Optional note describing this pairing\",\n          \"required\": false\n        }\n      ]\n    },\n    {\n      \"type\": 1,\n      \"name\": \"stop\",\n      \"description\": \"Stop syncing this channel\"\n    },\n    {\n      \"type\": 1,\n      \"name\": \"status\",\n      \"description\": \"Show whether this channel is synced and with which channel\"\n    },\n    {\n      \"type\": 1,\n      \"name\": \"tag\",\n      \"description\": \"Set display tags for synced usernames (use - to clear)\",\n      \"options\": [\n        {\n          \"type\": 3,\n          \"name\": \"ourtag\",\n          \"description\": \"Tag prepended to usernames from this channel (e.g. [PTTO]). Use - to clear.\",\n          \"required\": false\n        },\n        {\n          \"type\": 3,\n          \"name\": \"theirtag\",\n          \"description\": \"Tag prepended to usernames from the partner channel (e.g. [THEM]). Use - to clear.\",\n          \"required\": false\n        }\n      ]\n    }\n  ],\n  \"ephemeral\": true,\n  \"whitelist\": {\n    \"users\": [\n      \"181510541934592000\"\n    ],\n    \"roles\": []\n  }\n}",
+				"options": {}
+			}
+		},
+		{
+			"id": "e1fcf9f6-8082-4ec3-ab31-ea0b37cadbe5",
+			"name": "Switch on mode",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				440,
+				600
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "9cbabbc7-c072-4319-a12a-ca9d180938e1",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "command",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "command"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "346bac45-8c88-4c85-acd1-46cc58988930",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "autocomplete",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "autocomplete"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "e3ea0ba0-e65c-4400-afa9-fe7d988db7df",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "component",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "component"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "0e1662f6-3f39-42ad-a5d1-a3b2992c773c",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "modal",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "modal"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "b70ece90-d50f-4542-ad99-d16251ac2231",
+			"name": "Find Pairing",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				660,
+				600
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_pairings"
+				},
+				"matchType": "anyCondition",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "aChannelId",
+							"condition": "eq",
+							"keyValue": "={{ $('When called by another workflow').first().json.interaction.channelId }}"
+						},
+						{
+							"keyName": "bChannelId",
+							"condition": "eq",
+							"keyValue": "={{ $('When called by another workflow').first().json.interaction.channelId }}"
+						}
+					]
+				},
+				"limit": 1
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "bf6d00b9-e234-4708-ae05-d724e2e035a5",
+			"name": "Switch on subcommand",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				880,
+				600
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "af14455c-8fdb-4f1e-a246-b1e50f727d83",
+										"leftValue": "={{ $('When called by another workflow').first().json.interaction.subcommand }}",
+										"rightValue": "start",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "start"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "020661cb-fc63-4ce2-a6e8-570865999129",
+										"leftValue": "={{ $('When called by another workflow').first().json.interaction.subcommand }}",
+										"rightValue": "stop",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "stop"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "fbf26293-0bd9-46a7-a03c-7a16cbb6c10f",
+										"leftValue": "={{ $('When called by another workflow').first().json.interaction.subcommand }}",
+										"rightValue": "status",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "status"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "3c9abe1d-dde3-4576-a2a7-814c1373d51f",
+										"leftValue": "={{ $('When called by another workflow').first().json.interaction.subcommand }}",
+										"rightValue": "tag",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "tag"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "cac688e9-259c-4e9a-a07c-6adaf35e8fa1",
+			"name": "Reply",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				3300,
+				700
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify({ content: $json.reply }) }}",
+				"options": {}
+			}
+		},
+		{
+			"id": "0317f11f-b272-4c8f-a2cb-f9a6fd05bef4",
+			"name": "Validate Start",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1100,
+				0
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js\nconst ix = $('When called by another workflow').first().json.interaction || {};\nconst r = checkStart(ix, $input.all().map((i) => i.json));\nreturn [{ json: r.reply ? { ok: false, reply: r.reply } : { ok: true, remoteId: r.remoteId, note: r.note } }];"
+			}
+		},
+		{
+			"id": "f0ee1aba-dd69-4d4b-a51f-1d03d4b09e09",
+			"name": "Start OK?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1320,
+				0
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "7b54ba91-c740-459d-aa45-549c507e6ca3",
+							"leftValue": "={{ $json.ok === true }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "daad589d-72f9-4dfb-a2ea-93cd8dcf86ff",
+			"name": "Find Remote Pairing",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				1540,
+				0
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_pairings"
+				},
+				"matchType": "anyCondition",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "aChannelId",
+							"condition": "eq",
+							"keyValue": "={{ $('Validate Start').first().json.remoteId }}"
+						},
+						{
+							"keyName": "bChannelId",
+							"condition": "eq",
+							"keyValue": "={{ $('Validate Start').first().json.remoteId }}"
+						}
+					]
+				},
+				"limit": 1
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "7d4f7a6f-96b2-43c4-a8af-7511c13d9397",
+			"name": "Get Local Channel",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1760,
+				0
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "channel",
+				"operation": "get",
+				"channelId": "={{ $('When called by another workflow').first().json.interaction.channelId }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "4e703fd6-be73-4c1b-a45d-98c3cbda814b",
+			"name": "Get Remote Channel",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1980,
+				0
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "channel",
+				"operation": "get",
+				"channelId": "={{ $('Validate Start').first().json.remoteId }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "a8749081-75b3-46f0-a4cb-2a20b7fa499f",
+			"name": "Check Channels",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				2200,
+				0
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js\nconst remoteId = $('Validate Start').first().json.remoteId;\nconst remoteRows = $('Find Remote Pairing').all().map((i) => i.json);\nconst one = (name) => {\n\tconst it = $(name).first();\n\treturn it && !hasError(it) ? it.json : null;\n};\nconst r = checkChannels(remoteRows, remoteId, one('Get Local Channel'), one('Get Remote Channel'));\nreturn [{ json: r.reply ? { ok: false, reply: r.reply } : { ok: true, local: r.local, remote: r.remote } }];"
+			}
+		},
+		{
+			"id": "b924c42d-a7e1-4ad9-a015-354e4a20835b",
+			"name": "Channels OK?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				2420,
+				0
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "d6d81b51-91e1-46c0-a6b5-f68362cbee15",
+							"leftValue": "={{ $json.ok === true }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "8d8e6d0f-bd1b-4e42-ab94-09763d640a8f",
+			"name": "Get Local Guild",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2640,
+				0
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "guild",
+				"operation": "get",
+				"guildId": "={{ $('Check Channels').first().json.local.guildId }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "6c45ce2c-d899-4a15-ab26-6d1785dd55e2",
+			"name": "Get Remote Guild",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2860,
+				0
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "guild",
+				"operation": "get",
+				"guildId": "={{ $('Check Channels').first().json.remote.guildId }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "1de10d44-2eaa-44fe-a6bc-20f48b26e5b8",
+			"name": "Get Bot User",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				3080,
+				0
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "user",
+				"operation": "getCurrent"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "0469a9b8-5a9d-439e-a88a-1db8e57782b0",
+			"name": "List Local Hooks",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1100,
+				250
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "getChannelWebhooks",
+				"channelId": "={{ $('Check Channels').first().json.local.id }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"alwaysOutputData": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "a82a12c7-ef2a-4790-aae6-a2adbe3dacec",
+			"name": "Pick Local Hook",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1320,
+				250
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js\nreturn [{ json: hookStep($input.all(), $('Get Bot User').first().json.id) }];"
+			}
+		},
+		{
+			"id": "e73a2bef-e83a-41e6-a3d4-13327a58b6f9",
+			"name": "Need Local Hook?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1540,
+				250
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "259db01f-0823-4e39-acd8-89b27eb63660",
+							"leftValue": "={{ $json.create === true }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "d89f1257-dcfc-467d-ad7e-e08c85475ca1",
+			"name": "Create Local Hook",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1760,
+				150
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "create",
+				"channelId": "={{ $('Check Channels').first().json.local.id }}",
+				"name": "Spuddy Sync"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "26eb804d-c8db-40d9-aa6b-d791efe2f27e",
+			"name": "Local Hook",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1980,
+				250
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js\nconst picked = $('Pick Local Hook').first().json;\nconst r = resolveHook(picked, picked.create ? $input.first() : null);\nreturn [{ json: r.hook ? { ok: true, hook: r.hook } : { ok: false, reply: hookFailedReply(r.error) } }];"
+			}
+		},
+		{
+			"id": "b08aa645-5e4f-4f37-ac15-177d1f738c1a",
+			"name": "Local Hook OK?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				2200,
+				250
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "94f58273-89fb-4e99-a41e-d97a6f2f2246",
+							"leftValue": "={{ $json.ok === true }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "b41aa6c6-4f4a-45f6-a401-b500257cf58b",
+			"name": "List Remote Hooks",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2420,
+				250
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "getChannelWebhooks",
+				"channelId": "={{ $('Check Channels').first().json.remote.id }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"alwaysOutputData": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "02e86f20-6a41-4c1a-a090-bf203ae78fe4",
+			"name": "Pick Remote Hook",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				2640,
+				250
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js\nreturn [{ json: hookStep($input.all(), $('Get Bot User').first().json.id) }];"
+			}
+		},
+		{
+			"id": "6bb32c29-450b-48a8-accd-9051a8da6390",
+			"name": "Need Remote Hook?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				2860,
+				250
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "af031da7-115a-4f75-a4ca-3e6ed17ab1a7",
+							"leftValue": "={{ $json.create === true }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "8677c942-76a6-47c4-a2b8-6a8c035dad04",
+			"name": "Create Remote Hook",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				3080,
+				150
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "create",
+				"channelId": "={{ $('Check Channels').first().json.remote.id }}",
+				"name": "Spuddy Sync"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "44cf7a9d-6f03-4204-acec-d76688147ace",
+			"name": "Remote Hook",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				3300,
+				250
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js\nconst picked = $('Pick Remote Hook').first().json;\nconst r = resolveHook(picked, picked.create ? $input.first() : null);\nreturn [{ json: r.hook ? { ok: true, hook: r.hook } : { ok: false, reply: hookFailedReply(r.error) } }];"
+			}
+		},
+		{
+			"id": "51d32b21-23bb-49fb-a057-e766129f0f61",
+			"name": "Remote Hook OK?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				3520,
+				250
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "6ae69a2b-8bba-4639-a677-cbc3bbaf55ba",
+							"leftValue": "={{ $json.ok === true }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "9c5dcda2-a498-4d51-a0c8-af53b1aa4943",
+			"name": "Build Pairing",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1100,
+				500
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js\nconst ix = $('When called by another workflow').first().json.interaction || {};\nconst start = $('Validate Start').first().json;\nconst ch = $('Check Channels').first().json;\nconst guildName = (name, fallback) => {\n\tconst it = $(name).first();\n\treturn it && !hasError(it) && it.json.name ? it.json.name : fallback;\n};\nreturn [\n\t{\n\t\tjson: buildPairing({\n\t\t\tpairingId: newPairingId(),\n\t\t\tuserId: ix.userId,\n\t\t\tnote: start.note,\n\t\t\tnow: new Date().toISOString(),\n\t\t\tlocal: ch.local,\n\t\t\tremote: ch.remote,\n\t\t\tlocalGuildName: guildName('Get Local Guild', ch.local.guildId),\n\t\t\tremoteGuildName: guildName('Get Remote Guild', ch.remote.guildId),\n\t\t\tlocalHook: $('Local Hook').first().json.hook,\n\t\t\tremoteHook: $('Remote Hook').first().json.hook,\n\t\t}),\n\t},\n];"
+			}
+		},
+		{
+			"id": "e01f38dc-7354-4f10-acab-c5d79959979b",
+			"name": "Save Pairing",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				1320,
+				500
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "insert",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_pairings"
+				},
+				"columns": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"pairingId": "={{ $('Build Pairing').first().json.row.pairingId }}",
+						"aGuildId": "={{ $('Build Pairing').first().json.row.aGuildId }}",
+						"aChannelId": "={{ $('Build Pairing').first().json.row.aChannelId }}",
+						"aWebhookId": "={{ $('Build Pairing').first().json.row.aWebhookId }}",
+						"aWebhookToken": "={{ $('Build Pairing').first().json.row.aWebhookToken }}",
+						"aTag": "={{ $('Build Pairing').first().json.row.aTag }}",
+						"bGuildId": "={{ $('Build Pairing').first().json.row.bGuildId }}",
+						"bChannelId": "={{ $('Build Pairing').first().json.row.bChannelId }}",
+						"bWebhookId": "={{ $('Build Pairing').first().json.row.bWebhookId }}",
+						"bWebhookToken": "={{ $('Build Pairing').first().json.row.bWebhookToken }}",
+						"bTag": "={{ $('Build Pairing').first().json.row.bTag }}",
+						"createdBy": "={{ $('Build Pairing').first().json.row.createdBy }}",
+						"createdUtc": "={{ $('Build Pairing').first().json.row.createdUtc }}",
+						"note": "={{ $('Build Pairing').first().json.row.note }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "pairingId",
+							"displayName": "pairingId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "aGuildId",
+							"displayName": "aGuildId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "aChannelId",
+							"displayName": "aChannelId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "aWebhookId",
+							"displayName": "aWebhookId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "aWebhookToken",
+							"displayName": "aWebhookToken",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "aTag",
+							"displayName": "aTag",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "bGuildId",
+							"displayName": "bGuildId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "bChannelId",
+							"displayName": "bChannelId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "bWebhookId",
+							"displayName": "bWebhookId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "bWebhookToken",
+							"displayName": "bWebhookToken",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "bTag",
+							"displayName": "bTag",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "createdBy",
+							"displayName": "createdBy",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "createdUtc",
+							"displayName": "createdUtc",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "dateTime",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "note",
+							"displayName": "note",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": false
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "08fc70c0-1b6c-4dc5-adfe-1a7f2d625872",
+			"name": "Banner Local",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1540,
+				500
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "message",
+				"operation": "send",
+				"channelId": "={{ $('Check Channels').first().json.local.id }}",
+				"content": "={{ $('Build Pairing').first().json.bannerLocal }}",
+				"allowedMentions": {
+					"values": {
+						"parse": [],
+						"roles": "",
+						"users": "",
+						"repliedUser": true
+					}
+				}
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput",
+			"executeOnce": true
+		},
+		{
+			"id": "e7e07225-446f-46d3-ac4c-9daf2e269277",
+			"name": "Banner Remote",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1760,
+				500
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "message",
+				"operation": "send",
+				"channelId": "={{ $('Check Channels').first().json.remote.id }}",
+				"content": "={{ $('Build Pairing').first().json.bannerRemote }}",
+				"allowedMentions": {
+					"values": {
+						"parse": [],
+						"roles": "",
+						"users": "",
+						"repliedUser": true
+					}
+				}
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput",
+			"executeOnce": true
+		},
+		{
+			"id": "060a3321-9ade-49fe-a4f6-e9ebd7963401",
+			"name": "Reply Started",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				1980,
+				500
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify({ content: $('Build Pairing').first().json.reply }) }}",
+				"options": {}
+			},
+			"executeOnce": true
+		},
+		{
+			"id": "c425bf58-e945-4f52-afa9-5d0f91ba1fc6",
+			"name": "Stop Check",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1100,
+				900
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js\nconst ix = $('When called by another workflow').first().json.interaction || {};\nconst row = findPairing($('Find Pairing').all().map((i) => i.json), ix.channelId);\nconst r = stopPlan(row, ix.channelId);\nreturn [{ json: r.reply ? { ok: false, reply: r.reply } : Object.assign({ ok: true }, r) }];"
+			}
+		},
+		{
+			"id": "21a14ffc-7a44-44df-a687-8a5818baa3bb",
+			"name": "Is Synced?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1320,
+				900
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "6ee734ca-d3a7-4e4b-a21d-28a393d7a403",
+							"leftValue": "={{ $json.ok === true }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "ffc49945-4b80-492b-a83c-1a28c7ee73b9",
+			"name": "Delete Hook A",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1540,
+				900
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "delete",
+				"webhookId": "={{ $('Stop Check').first().json.a.webhookId }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "161e3314-c855-4b48-a40b-33fd05981c5d",
+			"name": "Delete Hook B",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1760,
+				900
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "delete",
+				"webhookId": "={{ $('Stop Check').first().json.b.webhookId }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "c1813ef9-c7a9-4d53-a22e-18f603479e7b",
+			"name": "Delete Pairing",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				1980,
+				900
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "deleteRows",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_pairings"
+				},
+				"matchType": "allConditions",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "pairingId",
+							"condition": "eq",
+							"keyValue": "={{ $('Stop Check').first().json.pairingId }}"
+						}
+					]
+				},
+				"options": {}
+			},
+			"alwaysOutputData": true,
+			"executeOnce": true
+		},
+		{
+			"id": "8497095f-6e6a-496e-a3d9-deba3d54317a",
+			"name": "Delete Map",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				2200,
+				900
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "deleteRows",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_message_map"
+				},
+				"matchType": "allConditions",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "pairingId",
+							"condition": "eq",
+							"keyValue": "={{ $('Stop Check').first().json.pairingId }}"
+						}
+					]
+				},
+				"options": {}
+			},
+			"alwaysOutputData": true,
+			"executeOnce": true
+		},
+		{
+			"id": "84e5e21a-2423-4123-a57e-34042546579d",
+			"name": "Banner A",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2420,
+				900
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "message",
+				"operation": "send",
+				"channelId": "={{ $('Stop Check').first().json.a.channelId }}",
+				"content": "🔌 Sync stopped for this channel.",
+				"allowedMentions": {
+					"values": {
+						"parse": [],
+						"roles": "",
+						"users": "",
+						"repliedUser": true
+					}
+				}
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput",
+			"executeOnce": true
+		},
+		{
+			"id": "5edaff61-dfd2-45a7-ad7e-a8594c519b03",
+			"name": "Banner B",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2640,
+				900
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "message",
+				"operation": "send",
+				"channelId": "={{ $('Stop Check').first().json.b.channelId }}",
+				"content": "🔌 Sync stopped for this channel.",
+				"allowedMentions": {
+					"values": {
+						"parse": [],
+						"roles": "",
+						"users": "",
+						"repliedUser": true
+					}
+				}
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput",
+			"executeOnce": true
+		},
+		{
+			"id": "8fe62d5a-6385-4baf-a9e2-fdf550690518",
+			"name": "Reply Stopped",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				2860,
+				900
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "{\"content\":\"Sync stopped.\"}",
+				"options": {}
+			},
+			"executeOnce": true
+		},
+		{
+			"id": "fc6b0656-c58a-4b47-aa27-35e558ce9626",
+			"name": "Status",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1100,
+				1200
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js\nconst ix = $('When called by another workflow').first().json.interaction || {};\nconst row = findPairing($('Find Pairing').all().map((i) => i.json), ix.channelId);\nreturn [{ json: { content: statusText(row, ix.channelId) } }];"
+			}
+		},
+		{
+			"id": "4db0c03f-b950-4d71-abee-a73c748352cf",
+			"name": "Tag",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1100,
+				1400
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js\nconst ix = $('When called by another workflow').first().json.interaction || {};\nconst row = findPairing($('Find Pairing').all().map((i) => i.json), ix.channelId);\nconst r = tagCommand(row, ix.channelId, ix.options || {});\nconst save = !!r.update && Object.keys(r.update).length > 0;\nreturn [{ json: save ? Object.assign({ save: true }, r) : { save: false, reply: r.reply } }];"
+			}
+		},
+		{
+			"id": "4d0cfd95-ff40-4357-a99f-eb82a57dc8c1",
+			"name": "Save Tags?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1320,
+				1400
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "b9e5e149-bbf3-41f8-ab5f-81e9d991db6b",
+							"leftValue": "={{ $json.save === true }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "4f415bb2-0e0f-4723-a7d1-186b4f6b987d",
+			"name": "Save Tags",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				1540,
+				1300
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "update",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_pairings"
+				},
+				"matchType": "allConditions",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "pairingId",
+							"condition": "eq",
+							"keyValue": "={{ $('Tag').first().json.pairingId }}"
+						}
+					]
+				},
+				"columns": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"aTag": "={{ $('Tag').first().json.next.aTag }}",
+						"bTag": "={{ $('Tag').first().json.next.bTag }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "aTag",
+							"displayName": "aTag",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "bTag",
+							"displayName": "bTag",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": false
+				},
+				"options": {}
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "4a6fdde4-4177-4139-aa1a-55190c6d661d",
+			"name": "Reply Tags",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				1760,
+				1300
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify({ content: $('Tag').first().json.reply }) }}",
+				"options": {}
+			},
+			"executeOnce": true
+		}
+	],
+	"connections": {
+		"When called by another workflow": {
+			"main": [
+				[
+					{
+						"node": "Command Definition",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Command Definition": {
+			"main": [
+				[
+					{
+						"node": "Switch on mode",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Switch on mode": {
+			"main": [
+				[
+					{
+						"node": "Find Pairing",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Find Pairing": {
+			"main": [
+				[
+					{
+						"node": "Switch on subcommand",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Switch on subcommand": {
+			"main": [
+				[
+					{
+						"node": "Validate Start",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Stop Check",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Status",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Tag",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Validate Start": {
+			"main": [
+				[
+					{
+						"node": "Start OK?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Start OK?": {
+			"main": [
+				[
+					{
+						"node": "Find Remote Pairing",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Find Remote Pairing": {
+			"main": [
+				[
+					{
+						"node": "Get Local Channel",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Local Channel": {
+			"main": [
+				[
+					{
+						"node": "Get Remote Channel",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Remote Channel": {
+			"main": [
+				[
+					{
+						"node": "Check Channels",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Check Channels": {
+			"main": [
+				[
+					{
+						"node": "Channels OK?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Channels OK?": {
+			"main": [
+				[
+					{
+						"node": "Get Local Guild",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Local Guild": {
+			"main": [
+				[
+					{
+						"node": "Get Remote Guild",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Remote Guild": {
+			"main": [
+				[
+					{
+						"node": "Get Bot User",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Bot User": {
+			"main": [
+				[
+					{
+						"node": "List Local Hooks",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"List Local Hooks": {
+			"main": [
+				[
+					{
+						"node": "Pick Local Hook",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Pick Local Hook": {
+			"main": [
+				[
+					{
+						"node": "Need Local Hook?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Need Local Hook?": {
+			"main": [
+				[
+					{
+						"node": "Create Local Hook",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Local Hook",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Create Local Hook": {
+			"main": [
+				[
+					{
+						"node": "Local Hook",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Local Hook": {
+			"main": [
+				[
+					{
+						"node": "Local Hook OK?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Local Hook OK?": {
+			"main": [
+				[
+					{
+						"node": "List Remote Hooks",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"List Remote Hooks": {
+			"main": [
+				[
+					{
+						"node": "Pick Remote Hook",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Pick Remote Hook": {
+			"main": [
+				[
+					{
+						"node": "Need Remote Hook?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Need Remote Hook?": {
+			"main": [
+				[
+					{
+						"node": "Create Remote Hook",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Remote Hook",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Create Remote Hook": {
+			"main": [
+				[
+					{
+						"node": "Remote Hook",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Remote Hook": {
+			"main": [
+				[
+					{
+						"node": "Remote Hook OK?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Remote Hook OK?": {
+			"main": [
+				[
+					{
+						"node": "Build Pairing",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Build Pairing": {
+			"main": [
+				[
+					{
+						"node": "Save Pairing",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Save Pairing": {
+			"main": [
+				[
+					{
+						"node": "Banner Local",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Banner Local": {
+			"main": [
+				[
+					{
+						"node": "Banner Remote",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Banner Remote": {
+			"main": [
+				[
+					{
+						"node": "Reply Started",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Stop Check": {
+			"main": [
+				[
+					{
+						"node": "Is Synced?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Is Synced?": {
+			"main": [
+				[
+					{
+						"node": "Delete Hook A",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Delete Hook A": {
+			"main": [
+				[
+					{
+						"node": "Delete Hook B",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Delete Hook B": {
+			"main": [
+				[
+					{
+						"node": "Delete Pairing",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Delete Pairing": {
+			"main": [
+				[
+					{
+						"node": "Delete Map",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Delete Map": {
+			"main": [
+				[
+					{
+						"node": "Banner A",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Banner A": {
+			"main": [
+				[
+					{
+						"node": "Banner B",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Banner B": {
+			"main": [
+				[
+					{
+						"node": "Reply Stopped",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Tag": {
+			"main": [
+				[
+					{
+						"node": "Save Tags?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Save Tags?": {
+			"main": [
+				[
+					{
+						"node": "Save Tags",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Save Tags": {
+			"main": [
+				[
+					{
+						"node": "Reply Tags",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"tags": [
+		{
+			"name": "discord-command"
+		}
+	]
+}

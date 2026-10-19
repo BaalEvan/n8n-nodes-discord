@@ -90,6 +90,7 @@ const ALLOWED_TYPES = {
 	'n8n-nodes-base.if': 2.3,
 	'n8n-nodes-base.manualTrigger': 1,
 	'n8n-nodes-base.n8n': 1,
+	'n8n-nodes-base.scheduleTrigger': 1.2,
 	'n8n-nodes-base.set': 3.5,
 	'n8n-nodes-base.stopAndError': 1,
 	'n8n-nodes-base.switch': 3.4,
@@ -140,7 +141,9 @@ describe('built workflows', () => {
 				'commands/cl',
 				'commands/parse',
 				'commands/preview',
+				'commands/sync',
 				'helpers/clickup-get-task',
+				'listeners/sync-mirror',
 				'reload-commands',
 				'router',
 				'sync',
@@ -159,6 +162,8 @@ describe('built workflows', () => {
 		expect(built['commands/cl'].name).toBe('Discord Command: cl');
 		expect(built['commands/changelog'].name).toBe('Discord Command: changelog');
 		expect(built['helpers/clickup-get-task'].name).toBe('Discord Helper: ClickUp Get Task');
+		expect(built['commands/sync'].name).toBe('Discord Command: sync');
+		expect(built['listeners/sync-mirror'].name).toBe('Discord Listener: Sync Mirror');
 	});
 
 	it('built workflows contain no //@inline lines', () => {
@@ -1385,7 +1390,9 @@ describe('writeAll', () => {
 			'commands/cl.json',
 			'commands/parse.json',
 			'commands/preview.json',
+			'commands/sync.json',
 			'helpers/clickup-get-task.json',
+			'listeners/sync-mirror.json',
 			'reload-commands.json',
 			'router.json',
 			'sync.json',

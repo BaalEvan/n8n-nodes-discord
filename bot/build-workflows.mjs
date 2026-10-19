@@ -15,14 +15,22 @@ export function commandTemplateNames(botDir) {
 		.sort();
 }
 
-export function helperTemplateNames(botDir) {
-	const dir = path.join(botDir, 'workflows', 'helpers');
+function folderTemplateNames(botDir, folder) {
+	const dir = path.join(botDir, 'workflows', folder);
 	if (!fs.existsSync(dir)) return [];
 	return fs
 		.readdirSync(dir)
 		.filter((f) => f.endsWith('.template.json'))
-		.map((f) => `helpers/${f.slice(0, -'.template.json'.length)}`)
+		.map((f) => `${folder}/${f.slice(0, -'.template.json'.length)}`)
 		.sort();
+}
+
+export function helperTemplateNames(botDir) {
+	return folderTemplateNames(botDir, 'helpers');
+}
+
+export function listenerTemplateNames(botDir) {
+	return folderTemplateNames(botDir, 'listeners');
 }
 
 const BOT_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -30,6 +38,7 @@ export const TEMPLATE_NAMES = [
 	...CORE_NAMES,
 	...commandTemplateNames(BOT_DIR),
 	...helperTemplateNames(BOT_DIR),
+	...listenerTemplateNames(BOT_DIR),
 ];
 
 export const DEFAULT_CLICKUP_CREDENTIALS = ['ClickUp (Client)'];
@@ -147,6 +156,7 @@ export function buildAll(botDir, options = {}) {
 		...CORE_NAMES,
 		...commandTemplateNames(botDir),
 		...helperTemplateNames(botDir),
+		...listenerTemplateNames(botDir),
 	]) {
 		const file = path.join(botDir, 'workflows', `${name}.template.json`);
 		out[name] = buildWorkflow(JSON.parse(fs.readFileSync(file, 'utf8')), readLib, options);

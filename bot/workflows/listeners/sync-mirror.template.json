@@ -1,0 +1,1895 @@
+{
+	"name": "Discord Listener: Sync Mirror",
+	"nodes": [
+		{
+			"id": "5a095ff1-be83-48c3-a96e-ef0b84be3dc2",
+			"name": "When called by another workflow",
+			"type": "n8n-nodes-base.executeWorkflowTrigger",
+			"typeVersion": 1.3,
+			"position": [
+				0,
+				400
+			],
+			"parameters": {
+				"inputSource": "passthrough"
+			}
+		},
+		{
+			"id": "35f15c7e-b0c4-4173-a224-53867deeee39",
+			"name": "Filter",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				220,
+				400
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js lib/syncMirror.js\nconst r = filterEvent($input.first().json);\nreturn r ? [{ json: r }] : [];"
+			}
+		},
+		{
+			"id": "2d8b3af0-8c63-40ab-a09f-485d88ac08e5",
+			"name": "Event",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				440,
+				400
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "7cfff9c7-8b63-45eb-a949-e430613cab99",
+										"leftValue": "={{ $json.event }}",
+										"rightValue": "create",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "create"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "894f0506-45e7-4e40-a9d3-2c930e21c709",
+										"leftValue": "={{ $json.event }}",
+										"rightValue": "update",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "update"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "3d5e338c-ce35-437f-aa28-9550f472065e",
+										"leftValue": "={{ $json.event }}",
+										"rightValue": "delete",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "delete"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "4520cc3b-8a23-4087-adc2-a61356338b21",
+			"name": "Find Pairing",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				660,
+				200
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_pairings"
+				},
+				"matchType": "anyCondition",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "aChannelId",
+							"condition": "eq",
+							"keyValue": "={{ $json.m.channel_id }}"
+						},
+						{
+							"keyName": "bChannelId",
+							"condition": "eq",
+							"keyValue": "={{ $json.m.channel_id }}"
+						}
+					]
+				},
+				"limit": 1
+			}
+		},
+		{
+			"id": "4ffa007b-0057-41be-a0ba-fbd8ebaab4cd",
+			"name": "Prepare",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				880,
+				200
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js lib/syncMirror.js\nconst m = $('Filter').first().json.m;\nconst out = prepareCreate(m, $input.first().json);\nreturn out ? [{ json: out }] : [];"
+			}
+		},
+		{
+			"id": "2a2751cf-cf5c-45fb-a0b4-dbeacbe4e8e0",
+			"name": "Has Files?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1100,
+				200
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "d61c6e43-0757-4dba-aa0e-1d24389fb601",
+							"leftValue": "={{ ($json.upload || []).length > 0 }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "b1f4b63d-2f82-4025-abd7-96245f7e0f97",
+			"name": "Split Files",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1320,
+				50
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "const p = $input.first().json;\nreturn (p.upload || []).map((a, i) => ({ json: { url: a.url, index: i } }));"
+			}
+		},
+		{
+			"id": "220b52e2-2572-4e18-a777-dfe206e34a8a",
+			"name": "Download",
+			"type": "n8n-nodes-base.httpRequest",
+			"typeVersion": 4.2,
+			"position": [
+				1540,
+				50
+			],
+			"parameters": {
+				"method": "GET",
+				"url": "={{ $json.url }}",
+				"authentication": "none",
+				"options": {
+					"response": {
+						"response": {
+							"responseFormat": "file",
+							"outputPropertyName": "data"
+						}
+					},
+					"timeout": 60000
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "909ba2b9-95aa-4724-a58b-09be2013d23b",
+			"name": "Collect Files",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1760,
+				50
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js lib/syncMirror.js\nconst out = collectFiles($('Prepare').first().json, $input.all());\nreturn out ? [out] : [];"
+			}
+		},
+		{
+			"id": "af568211-745a-4618-ac22-9d392657996e",
+			"name": "Send",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1980,
+				200
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "execute",
+				"webhookUrl": "=https://discord.com/api/v10/webhooks/{{ $json.target.webhookId }}/{{ $json.target.webhookToken }}",
+				"content": "={{ $json.content }}",
+				"attachments": {
+					"attachment": [
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[0] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[1] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[2] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[3] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[4] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[5] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[6] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[7] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[8] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[9] || '' }}"
+						}
+					]
+				},
+				"allowedMentions": {
+					"values": {
+						"parse": [],
+						"roles": "",
+						"users": "",
+						"repliedUser": true
+					}
+				},
+				"username": "={{ $json.username }}",
+				"avatarUrl": "={{ $json.avatarUrl }}",
+				"wait": true
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "868a7eb2-31d4-422c-a18c-54e0bd6309f5",
+			"name": "Save Map",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				2200,
+				200
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "insert",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_message_map"
+				},
+				"columns": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"sourceMessageId": "={{ $('Prepare').first().json.sourceMessageId }}",
+						"pairingId": "={{ $('Prepare').first().json.pairingId }}",
+						"mirrorChannelId": "={{ $('Prepare').first().json.target.channelId }}",
+						"mirrorMessageId": "={{ $json.id }}",
+						"createdUtc": "={{ $now.toISO() }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "sourceMessageId",
+							"displayName": "sourceMessageId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "pairingId",
+							"displayName": "pairingId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "mirrorChannelId",
+							"displayName": "mirrorChannelId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "mirrorMessageId",
+							"displayName": "mirrorMessageId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "createdUtc",
+							"displayName": "createdUtc",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "dateTime",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": false
+				},
+				"options": {}
+			},
+			"executeOnce": true
+		},
+		{
+			"id": "6a773590-f874-4bae-a607-3cd8342b6335",
+			"name": "Find Map",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				660,
+				600
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_message_map"
+				},
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "sourceMessageId",
+							"condition": "eq",
+							"keyValue": "={{ $json.m.id }}"
+						}
+					]
+				},
+				"limit": 1
+			}
+		},
+		{
+			"id": "98cbaf07-bd17-498a-a31b-f2ce1b3eabfd",
+			"name": "Find Pairing By Id",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				880,
+				600
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_pairings"
+				},
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "pairingId",
+							"condition": "eq",
+							"keyValue": "={{ $json.pairingId }}"
+						}
+					]
+				},
+				"limit": 1
+			}
+		},
+		{
+			"id": "b6faebaa-6e52-4e91-afb2-0468458e5270",
+			"name": "Mirror Target",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1100,
+				600
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js lib/syncMirror.js\nconst f = $('Filter').first().json;\nconst t = mirrorTarget(f.event, $('Find Map').first().json, $input.first().json, f.m);\nreturn t ? [{ json: t }] : [];"
+			}
+		},
+		{
+			"id": "f139bc55-0e0a-460e-a897-2b51ea94e4ce",
+			"name": "Edit or Delete",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				1320,
+				600
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "b4574bc0-0b14-40b1-a37e-80518fb2ce17",
+										"leftValue": "={{ $json.event }}",
+										"rightValue": "update",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "update"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "c9124217-a9c2-4a2a-aca0-252d8b05387a",
+										"leftValue": "={{ $json.event }}",
+										"rightValue": "delete",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "delete"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "d43538b6-9fcc-4cd3-ae55-26024d7207f2",
+			"name": "Edit",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1540,
+				500
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "editMessage",
+				"webhookId": "={{ $json.target.webhookId }}",
+				"webhookToken": "={{ $json.target.webhookToken }}",
+				"messageId": "={{ $json.mirrorMessageId }}",
+				"content": "={{ $json.content }}",
+				"allowedMentions": {
+					"values": {
+						"parse": [],
+						"roles": "",
+						"users": "",
+						"repliedUser": true
+					}
+				}
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "5370ad47-c68f-4e9d-a96e-c05c9f124bae",
+			"name": "Delete",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1540,
+				700
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "deleteMessage",
+				"webhookId": "={{ $json.target.webhookId }}",
+				"webhookToken": "={{ $json.target.webhookToken }}",
+				"messageId": "={{ $json.mirrorMessageId }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "05daec09-7f04-45b2-aa26-c689cdd79eb2",
+			"name": "Remove Map",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				2200,
+				900
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "deleteRows",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_message_map"
+				},
+				"matchType": "allConditions",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "sourceMessageId",
+							"condition": "eq",
+							"keyValue": "={{ $('Filter').first().json.m.id }}"
+						}
+					]
+				},
+				"options": {}
+			},
+			"executeOnce": true
+		},
+		{
+			"id": "4aecf510-f153-4211-a4fb-173e58e78ae3",
+			"name": "Gone?",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1980,
+				900
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js lib/syncMirror.js\nconst event = $('Filter').first().json.event;\nconst err = discordError($input.first());\nlet ctx;\nlet binary;\nif (event === 'create') {\n\tlet collected = null;\n\ttry {\n\t\tcollected = $('Collect Files').first();\n\t} catch (e) {\n\t\tcollected = null;\n\t}\n\tif (collected) {\n\t\tctx = collected.json;\n\t\tbinary = collected.binary;\n\t} else {\n\t\tctx = $('Prepare').first().json;\n\t}\n} else {\n\tctx = $('Mirror Target').first().json;\n}\nconst action = goneDecision(event, err);\nif (action === 'fail') {\n\tthrow new Error('Sync mirror ' + event + ' failed: ' + err.message + ' (Discord code ' + (err.code || 'none') + ', HTTP ' + (err.status || 'unknown') + ')');\n}\nconst item = { json: Object.assign({}, ctx, { event: event, action: action }) };\nif (binary) item.binary = binary;\nreturn [item];"
+			}
+		},
+		{
+			"id": "83c3b002-a705-4caf-ab45-27c2dd88838f",
+			"name": "Gone Action",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				2200,
+				900
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "652b4135-25b3-4242-a4b8-0668df7a0e01",
+										"leftValue": "={{ $json.action }}",
+										"rightValue": "recreate",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "recreate"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "7ed9a929-3a80-470a-a9b6-2fffe334ef12",
+										"leftValue": "={{ $json.action }}",
+										"rightValue": "done",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "done"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "336e1b79-78bb-40e6-ab2b-65740a080f5b",
+			"name": "Get Bot User",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2420,
+				900
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "user",
+				"operation": "getCurrent"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "d0a892d6-5615-47fc-a7ed-25f335805de5",
+			"name": "List Hooks",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2640,
+				900
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "getChannelWebhooks",
+				"channelId": "={{ $('Gone?').first().json.target.channelId }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"alwaysOutputData": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "54f9926e-6998-47a8-a3a5-3eb63a239445",
+			"name": "Pick Hook",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				2860,
+				900
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js lib/syncMirror.js\nreturn [{ json: hookStep($input.all(), $('Get Bot User').first().json.id) }];"
+			}
+		},
+		{
+			"id": "8032d4d6-73f0-4ebf-a9f7-21b137e98823",
+			"name": "Need Hook?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				3080,
+				900
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "be80dc21-d83e-4e07-a3b5-daf1f84be8a5",
+							"leftValue": "={{ $json.create === true }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "6d81c8b1-4d25-4db7-ae5d-7bfd07ed4d73",
+			"name": "Create Hook",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				3300,
+				800
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "create",
+				"channelId": "={{ $('Gone?').first().json.target.channelId }}",
+				"name": "Spuddy Sync"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "5a43d76a-916a-4fa6-aa1b-8965800f2a1a",
+			"name": "New Hook",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				3520,
+				900
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js lib/syncMirror.js\nconst picked = $('Pick Hook').first().json;\nconst g = $('Gone?').first().json;\nconst r = resolveHook(picked, picked.create ? $input.first() : null);\nif (!r.hook) {\n\tthrow new Error('Sync mirror could not recreate the Spuddy Sync webhook in channel ' + g.target.channelId + ': ' + r.error);\n}\nreturn [{ json: { hook: r.hook, side: g.target.side, pairingId: g.pairingId } }];"
+			}
+		},
+		{
+			"id": "6ea01b7d-80b9-4165-a002-1b5e2cec754d",
+			"name": "Which Side",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				3740,
+				900
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "ff79d3b0-73e3-4d36-a562-1b1fca417773",
+										"leftValue": "={{ $json.side }}",
+										"rightValue": "a",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "a"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "1419a106-8fb9-4397-a0bd-3d16c922706a",
+										"leftValue": "={{ $json.side }}",
+										"rightValue": "b",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "b"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "7b9598e7-7e56-4f39-a3f7-d1b8b53c9d3e",
+			"name": "Save Hook A",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				3960,
+				800
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "update",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_pairings"
+				},
+				"matchType": "allConditions",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "pairingId",
+							"condition": "eq",
+							"keyValue": "={{ $json.pairingId }}"
+						}
+					]
+				},
+				"columns": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"aWebhookId": "={{ $json.hook.id }}",
+						"aWebhookToken": "={{ $json.hook.token }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "aWebhookId",
+							"displayName": "aWebhookId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "aWebhookToken",
+							"displayName": "aWebhookToken",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": false
+				},
+				"options": {}
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "fbcbc5c2-621a-4f67-a257-b9eeb5114854",
+			"name": "Save Hook B",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				3960,
+				1000
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "update",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_pairings"
+				},
+				"matchType": "allConditions",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "pairingId",
+							"condition": "eq",
+							"keyValue": "={{ $json.pairingId }}"
+						}
+					]
+				},
+				"columns": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"bWebhookId": "={{ $json.hook.id }}",
+						"bWebhookToken": "={{ $json.hook.token }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "bWebhookId",
+							"displayName": "bWebhookId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "bWebhookToken",
+							"displayName": "bWebhookToken",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": false
+				},
+				"options": {}
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "e2d9d4e8-f5e0-47c8-a001-268c1ee8ec17",
+			"name": "Retry Input",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				4180,
+				900
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "const g = $('Gone?').first();\nconst hook = $('New Hook').first().json.hook;\nconst target = Object.assign({}, g.json.target, { webhookId: hook.id, webhookToken: hook.token });\nconst item = { json: Object.assign({}, g.json, { target: target }) };\nif (g.binary) item.binary = g.binary;\nreturn [item];"
+			}
+		},
+		{
+			"id": "161d0a77-82e3-4b4c-a858-f3b63a80942d",
+			"name": "Retry",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				4400,
+				900
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "1ef8b309-cd8c-43f0-ab83-cbe7cc5ef9c8",
+										"leftValue": "={{ $json.event }}",
+										"rightValue": "create",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "create"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "1e289dd0-bd72-4d56-a7f2-404c68822cb2",
+										"leftValue": "={{ $json.event }}",
+										"rightValue": "update",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "update"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "b09190f8-5244-45e3-aac4-876b72a7616e",
+										"leftValue": "={{ $json.event }}",
+										"rightValue": "delete",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "delete"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "c25a41f0-b9b9-42e4-a15c-76b063a64d68",
+			"name": "Send Again",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				4620,
+				700
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "execute",
+				"webhookUrl": "=https://discord.com/api/v10/webhooks/{{ $json.target.webhookId }}/{{ $json.target.webhookToken }}",
+				"content": "={{ $json.content }}",
+				"attachments": {
+					"attachment": [
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[0] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[1] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[2] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[3] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[4] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[5] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[6] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[7] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[8] || '' }}"
+						},
+						{
+							"binaryPropertyName": "={{ ($json.files || [])[9] || '' }}"
+						}
+					]
+				},
+				"allowedMentions": {
+					"values": {
+						"parse": [],
+						"roles": "",
+						"users": "",
+						"repliedUser": true
+					}
+				},
+				"username": "={{ $json.username }}",
+				"avatarUrl": "={{ $json.avatarUrl }}",
+				"wait": true
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "71f67d37-a8c6-4293-ae6f-60000cfc5b32",
+			"name": "Edit Again",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				4620,
+				900
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "editMessage",
+				"webhookId": "={{ $json.target.webhookId }}",
+				"webhookToken": "={{ $json.target.webhookToken }}",
+				"messageId": "={{ $json.mirrorMessageId }}",
+				"content": "={{ $json.content }}",
+				"allowedMentions": {
+					"values": {
+						"parse": [],
+						"roles": "",
+						"users": "",
+						"repliedUser": true
+					}
+				}
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "a7c54816-2ff7-4f6a-a71a-a08d0fc61c39",
+			"name": "Delete Again",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				4620,
+				1100
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "webhook",
+				"operation": "deleteMessage",
+				"webhookId": "={{ $json.target.webhookId }}",
+				"webhookToken": "={{ $json.target.webhookToken }}",
+				"messageId": "={{ $json.mirrorMessageId }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "7831bf16-eec1-4631-a646-13d935dc4f80",
+			"name": "Retry Failed",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				4840,
+				1100
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js lib/syncMirror.js\nconst event = $('Filter').first().json.event;\nconst err = discordError($input.first());\nif (event === 'delete' && isUnknownMessage(err)) return [{ json: { done: true } }];\nthrow new Error('Sync mirror ' + event + ' retry failed: ' + err.message + ' (Discord code ' + (err.code || 'none') + ', HTTP ' + (err.status || 'unknown') + ')');"
+			}
+		},
+		{
+			"id": "35d40f32-e621-42a3-a206-6a82dc611b0e",
+			"name": "Every Day 03:30",
+			"type": "n8n-nodes-base.scheduleTrigger",
+			"typeVersion": 1.2,
+			"position": [
+				0,
+				1400
+			],
+			"parameters": {
+				"rule": {
+					"interval": [
+						{
+							"field": "days",
+							"daysInterval": 1,
+							"triggerAtHour": 3,
+							"triggerAtMinute": 30
+						}
+					]
+				}
+			},
+			"notes": "Deletes sync_message_map rows older than discord_config.syncMapRetentionDays (default 14). Europe/Warsaw, from the workflow timezone."
+		},
+		{
+			"id": "e40bb349-6d40-4da0-a441-4b8d21b08668",
+			"name": "Load Retention",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				220,
+				1400
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "discord_config"
+				},
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "key",
+							"condition": "eq",
+							"keyValue": "syncMapRetentionDays"
+						}
+					]
+				},
+				"limit": 1
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "3fa8b86f-28a6-4e35-a46c-362f7903d71d",
+			"name": "Cutoff",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				440,
+				1400
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/sync.js lib/syncMirror.js\nconst cfg = $input.first().json || {};\nreturn [{ json: { cutoff: retentionCutoff(cfg.value, new Date()) } }];"
+			}
+		},
+		{
+			"id": "73c007c1-eba3-4b20-ae42-f23357a1339e",
+			"name": "Prune Map",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				660,
+				1400
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "deleteRows",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "sync_message_map"
+				},
+				"matchType": "allConditions",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "createdUtc",
+							"condition": "lt",
+							"keyValue": "={{ $json.cutoff }}"
+						}
+					]
+				},
+				"options": {}
+			}
+		}
+	],
+	"connections": {
+		"When called by another workflow": {
+			"main": [
+				[
+					{
+						"node": "Filter",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Filter": {
+			"main": [
+				[
+					{
+						"node": "Event",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Event": {
+			"main": [
+				[
+					{
+						"node": "Find Pairing",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Find Map",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Find Map",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Find Pairing": {
+			"main": [
+				[
+					{
+						"node": "Prepare",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Prepare": {
+			"main": [
+				[
+					{
+						"node": "Has Files?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Has Files?": {
+			"main": [
+				[
+					{
+						"node": "Split Files",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Send",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Split Files": {
+			"main": [
+				[
+					{
+						"node": "Download",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Download": {
+			"main": [
+				[
+					{
+						"node": "Collect Files",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Collect Files": {
+			"main": [
+				[
+					{
+						"node": "Send",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Send": {
+			"main": [
+				[
+					{
+						"node": "Save Map",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Gone?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Find Map": {
+			"main": [
+				[
+					{
+						"node": "Find Pairing By Id",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Find Pairing By Id": {
+			"main": [
+				[
+					{
+						"node": "Mirror Target",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Mirror Target": {
+			"main": [
+				[
+					{
+						"node": "Edit or Delete",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Edit or Delete": {
+			"main": [
+				[
+					{
+						"node": "Edit",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Delete",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Edit": {
+			"main": [
+				[],
+				[
+					{
+						"node": "Gone?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Delete": {
+			"main": [
+				[
+					{
+						"node": "Remove Map",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Gone?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Gone?": {
+			"main": [
+				[
+					{
+						"node": "Gone Action",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Gone Action": {
+			"main": [
+				[
+					{
+						"node": "Get Bot User",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Remove Map",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Bot User": {
+			"main": [
+				[
+					{
+						"node": "List Hooks",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"List Hooks": {
+			"main": [
+				[
+					{
+						"node": "Pick Hook",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Pick Hook": {
+			"main": [
+				[
+					{
+						"node": "Need Hook?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Need Hook?": {
+			"main": [
+				[
+					{
+						"node": "Create Hook",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "New Hook",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Create Hook": {
+			"main": [
+				[
+					{
+						"node": "New Hook",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"New Hook": {
+			"main": [
+				[
+					{
+						"node": "Which Side",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Which Side": {
+			"main": [
+				[
+					{
+						"node": "Save Hook A",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Save Hook B",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Save Hook A": {
+			"main": [
+				[
+					{
+						"node": "Retry Input",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Save Hook B": {
+			"main": [
+				[
+					{
+						"node": "Retry Input",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Retry Input": {
+			"main": [
+				[
+					{
+						"node": "Retry",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Retry": {
+			"main": [
+				[
+					{
+						"node": "Send Again",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Edit Again",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Delete Again",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Send Again": {
+			"main": [
+				[
+					{
+						"node": "Save Map",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Retry Failed",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Edit Again": {
+			"main": [
+				[],
+				[
+					{
+						"node": "Retry Failed",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Delete Again": {
+			"main": [
+				[
+					{
+						"node": "Remove Map",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Retry Failed",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Retry Failed": {
+			"main": [
+				[
+					{
+						"node": "Remove Map",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Every Day 03:30": {
+			"main": [
+				[
+					{
+						"node": "Load Retention",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Load Retention": {
+			"main": [
+				[
+					{
+						"node": "Cutoff",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Cutoff": {
+			"main": [
+				[
+					{
+						"node": "Prune Map",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1",
+		"saveDataSuccessExecution": "none",
+		"saveDataErrorExecution": "all",
+		"timezone": "Europe/Warsaw"
+	}
+}
