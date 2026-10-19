@@ -23,3 +23,7 @@ The test bot token goes into an n8n credential ("Discord Gateway Bot API") that 
 n8n reads custom nodes only at startup. After each rebuild, run:
 
     docker compose -f dev/docker-compose.yml restart
+
+If n8n still shows the old build after a restart, recreate the container so it picks up the new bind-mounted folder:
+
+    docker compose -f dev/docker-compose.yml up -d --force-recreate
