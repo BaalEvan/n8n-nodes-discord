@@ -347,6 +347,26 @@ describe('parse command', () => {
 		]);
 	});
 
+	it('Attachment passes the size error on to Reply Error', () => {
+		const big = {
+			interaction: {
+				options: { logfile: '7' },
+				resolved: { attachments: { 7: { url: 'u', filename: 'a.log', size: 30 * 1024 * 1024 } } },
+			},
+		};
+		const out = runCode(wf, 'Attachment', {
+			nodes: { 'When called by another workflow': [{ json: big }] },
+		});
+		expect(out).toEqual([
+			{
+				json: {
+					error:
+						'That log file is too large to parse (30.0 MB, limit 20 MB). Upload a smaller or trimmed log.',
+				},
+			},
+		]);
+	});
+
 	it('Attachment reports a missing attachment', () => {
 		const out = runCode(wf, 'Attachment', {
 			nodes: {

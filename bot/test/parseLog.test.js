@@ -167,3 +167,75 @@ describe('findAttachment', () => {
 		expect(findAttachment(undefined)).toBeNull();
 	});
 });
+
+describe('findAttachment size cap', () => {
+	const MAX = 20 * 1024 * 1024;
+	const withSize = (size) => ({
+		options: { logfile: '1' },
+		resolved: { attachments: { 1: { url: 'u', filename: 'x.log', size } } },
+	});
+	const tooLarge = (label) =>
+		`That log file is too large to parse (${label}, limit 20 MB). Upload a smaller or trimmed log.`;
+
+	it('accepts exactly 20 MB', () => {
+		expect(findAttachment(withSize(MAX))).toEqual({ url: 'u', filename: 'x.log', size: MAX });
+	});
+	it('rejects 20 MB plus one byte', () => {
+		expect(findAttachment(withSize(MAX + 1))).toEqual({ error: tooLarge('20.0 MB') });
+	});
+	it('prints the size with one decimal', () => {
+		expect(findAttachment(withSize(150 * 1024 * 1024))).toEqual({
+			error: tooLarge('150.0 MB'),
+		});
+		expect(findAttachment(withSize(31.5 * 1024 * 1024))).toEqual({ error: tooLarge('31.5 MB') });
+	});
+	it('rejects a missing or non-numeric size', () => {
+		const unknown = tooLarge('unknown size');
+		expect(findAttachment(withSize(undefined))).toEqual({ error: unknown });
+		expect(findAttachment(withSize('12'))).toEqual({ error: unknown });
+		expect(findAttachment(withSize(NaN))).toEqual({ error: unknown });
+		expect(findAttachment(withSize(null))).toEqual({ error: unknown });
+	});
+});
+
+describe('parseLog file cap', () => {
+	const NL = String.fromCharCode(10);
+	const block = (i) => ['XException: e' + i, '  at A.B () in x:' + i].join(NL);
+	const log = (n) => Array.from({ length: n }, (_, i) => block(i)).join(NL);
+
+	it('does not truncate a file under the cap', () => {
+		const r = parseLog(log(25), meta);
+		expect(r.content).toBe('There are 25 exceptions in the log.');
+		expect(r.file).not.toContain('truncated');
+	});
+
+	it('cuts the file at the cap, ends with a truncation line and flags the message', () => {
+		const r = parseLog(log(50), meta, { fileLimit: 600 });
+		expect(r.mode).toBe('file');
+		expect(r.content).toBe('There are 50 exceptions in the log. The file was truncated.');
+		const shown = r.file.split('XException').length - 1;
+		expect(shown).toBeGreaterThan(0);
+		expect(shown).toBeLessThan(50);
+		expect(r.file.trimEnd().split(NL).pop()).toBe(
+			`… truncated (${50 - shown} more exceptions not shown)`,
+		);
+		expect(Buffer.byteLength(r.file, 'utf8')).toBeLessThanOrEqual(600);
+	});
+
+	it('caps at 8 MB by default', () => {
+		const stack = Array.from({ length: 200 }, (_, i) => frame(i));
+		const one = ['XException: big', ...stack].join(NL);
+		const r = parseLog(Array.from({ length: 2000 }, () => one).join(NL), meta);
+		expect(r.mode).toBe('file');
+		expect(Buffer.byteLength(r.file, 'utf8')).toBeLessThanOrEqual(8 * 1024 * 1024);
+		expect(r.content.endsWith(' The file was truncated.')).toBe(true);
+		expect(r.file).toMatch(/… truncated \(\d+ more exceptions not shown\)\s*$/);
+	});
+
+	it('counts bytes, not characters', () => {
+		const text = Array.from({ length: 30 }, (_, i) => 'XException: ' + 'é'.repeat(50) + i).join(NL);
+		const r = parseLog(text, meta, { fileLimit: 1000 });
+		expect(Buffer.byteLength(r.file, 'utf8')).toBeLessThanOrEqual(1000);
+		expect(r.content).toContain('The file was truncated.');
+	});
+});

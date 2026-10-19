@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
-import { prepareWorkflow, sameContent, ORDER, PUBLISH } from '../import-dev.mjs';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { importDev, prepareWorkflow, sameContent, ORDER, PUBLISH } from '../import-dev.mjs';
+import { writeAll } from '../build-workflows.mjs';
 import { buildAll } from '../build-workflows.mjs';
 const path = require('path');
 
@@ -90,8 +91,68 @@ describe('command templates', () => {
 	});
 
 	it('prepare with the discord-command tag', () => {
-		const { body, tags } = prepareWorkflow(built['commands/parse'], { credentials, ownerId: OWNER });
+		const { body, tags } = prepareWorkflow(built['commands/parse'], {
+			credentials,
+			ownerId: OWNER,
+		});
 		expect(tags).toEqual(['discord-command']);
 		expect(body.name).toBe('Discord Command: parse');
+	});
+});
+
+describe('importDev skip', () => {
+	const fs = require('fs');
+	const os = require('os');
+	afterEach(() => vi.unstubAllGlobals());
+
+	function stubApi() {
+		const calls = [];
+		let next = 0;
+		vi.stubGlobal('fetch', async (url, init = {}) => {
+			const method = init.method || 'GET';
+			const p = new URL(url).pathname.replace('/api/v1', '');
+			calls.push({ method, p, body: init.body ? JSON.parse(init.body) : undefined });
+			let data = {};
+			if (method === 'GET') {
+				if (p.endsWith('/columns')) data = [];
+				else if (p === '/credentials') data = { data: credentials };
+				else data = { data: [] };
+			} else if (method === 'POST' || method === 'PUT') {
+				data = { id: 'ID' + next++ };
+			}
+			return { ok: true, status: 200, text: async () => JSON.stringify(data) };
+		});
+		return calls;
+	}
+	function run(skip) {
+		const dist = fs.mkdtempSync(path.join(os.tmpdir(), 'bot-skip-'));
+		writeAll(path.join(__dirname, '..'), dist);
+		return importDev({
+			baseUrl: 'http://n8n.test',
+			apiKey: 'k',
+			distDir: dist,
+			skip,
+			log: () => {},
+		});
+	}
+
+	it('leaves skipped workflows alone and imports the rest', async () => {
+		const calls = stubApi();
+		const result = await run(['router', 'sync']);
+		const saved = calls
+			.filter((c) => c.method === 'POST' && c.p === '/workflows')
+			.map((c) => c.body.name);
+		expect(saved).toContain('Discord Command: parse');
+		expect(saved).not.toContain('Discord Router');
+		expect(saved).not.toContain('Discord Sync');
+		expect(Object.keys(result.workflows)).not.toContain('router');
+	});
+
+	it('rejects an unknown key and lists the valid ones, before any request', async () => {
+		const calls = stubApi();
+		await expect(run(['routr'])).rejects.toThrow(
+			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, commands/parse, router',
+		);
+		expect(calls).toEqual([]);
 	});
 });

@@ -177,6 +177,11 @@ export async function importDev({
 	skip = [],
 	log = console.log,
 }) {
+	for (const key of skip) {
+		if (!ORDER.includes(key)) {
+			throw new Error(`Unknown IMPORT_SKIP key "${key}". Valid keys: ${ORDER.join(', ')}`);
+		}
+	}
 	const api = client(baseUrl, apiKey);
 	const tables = {};
 	for (const [name, columns] of Object.entries(TABLES)) {

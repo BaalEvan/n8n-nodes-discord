@@ -1,6 +1,12 @@
 var PARSE_EXCEPTION_RE = /^(?:[^|]*\|[^|]*\|)?(?:\w*Exception:|\w*LogException)/;
 var PARSE_STACK_RE = /^(?:[^|]*\|[^|]*\|)?\s+at\s/;
 var PARSE_FENCE = '`'.repeat(3);
+var PARSE_MAX_INPUT = 20 * 1024 * 1024;
+var PARSE_MAX_FILE = 8 * 1024 * 1024;
+
+function byteLength(text) {
+	return typeof Buffer !== 'undefined' ? Buffer.byteLength(text, 'utf8') : text.length * 3;
+}
 
 function findAttachment(interaction) {
 	var inter = interaction || {};
@@ -11,6 +17,18 @@ function findAttachment(interaction) {
 		inter.resolved.attachments &&
 		inter.resolved.attachments[id];
 	if (!a || !a.url) return null;
+	if (typeof a.size !== 'number' || !isFinite(a.size) || a.size > PARSE_MAX_INPUT) {
+		var label =
+			typeof a.size === 'number' && isFinite(a.size)
+				? (a.size / 1048576).toFixed(1) + ' MB'
+				: 'unknown size';
+		return {
+			error:
+				'That log file is too large to parse (' +
+				label +
+				', limit 20 MB). Upload a smaller or trimmed log.',
+		};
+	}
 	return { url: a.url, filename: a.filename, size: a.size };
 }
 
@@ -26,8 +44,9 @@ function fileMessage(n) {
 	);
 }
 
-function parseLog(text, meta) {
+function parseLog(text, meta, options) {
 	var info = meta || {};
+	var fileLimit = options && options.fileLimit ? options.fileLimit : PARSE_MAX_FILE;
 	var lines = String(text === undefined || text === null ? '' : text).split(/\r?\n/);
 	var list = [];
 	var cur = null;
@@ -57,12 +76,24 @@ function parseLog(text, meta) {
 	}, 0);
 
 	if (n > 9 || total > 6000) {
-		var file = list
-			.map(function (e) {
-				return [e.message].concat(e.stack, ['', '']).join('\n') + '\n';
-			})
-			.join('');
-		return { mode: 'file', content: fileMessage(n), file: file };
+		var file = '';
+		var used = 0;
+		var shown = 0;
+		var reserve = 100;
+		for (var i = 0; i < n; i++) {
+			var chunk = [list[i].message].concat(list[i].stack, ['', '']).join('\n') + '\n';
+			var size = byteLength(chunk);
+			if (used + size > fileLimit - (i < n - 1 ? reserve : 0)) break;
+			file += chunk;
+			used += size;
+			shown++;
+		}
+		var content = fileMessage(n);
+		if (shown < n) {
+			file += '… truncated (' + (n - shown) + ' more exceptions not shown)\n';
+			content += ' The file was truncated.';
+		}
+		return { mode: 'file', content: content, file: file };
 	}
 	return {
 		mode: 'embeds',
