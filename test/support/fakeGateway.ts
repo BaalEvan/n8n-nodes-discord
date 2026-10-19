@@ -13,6 +13,8 @@ export class FakeGateway {
 	onIdentify: 'ready' | { closeWith: number } = 'ready';
 	onResume: 'resumed' | 'invalid' = 'resumed';
 	ackHeartbeats = true;
+	sendHello = true;
+	malformedIdentifyReplies = 0;
 	connections: FakeConnection[] = [];
 
 	private server: WebSocketServer | null = null;
@@ -20,6 +22,10 @@ export class FakeGateway {
 	private sockets = new Set<WebSocket>();
 	private sequence = 0;
 	private sessions = 0;
+
+	get openConnections(): number {
+		return this.sockets.size;
+	}
 
 	async start(): Promise<string> {
 		const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
@@ -72,6 +78,7 @@ export class FakeGateway {
 			this.handle(socket, message);
 		});
 
+		if (!this.sendHello) return;
 		connection.helloAt = Date.now();
 		this.send(socket, { op: 10, d: { heartbeat_interval: this.heartbeatIntervalMs } });
 	}
@@ -83,6 +90,11 @@ export class FakeGateway {
 		}
 
 		if (message.op === 2) {
+			if (this.malformedIdentifyReplies > 0) {
+				this.malformedIdentifyReplies--;
+				if (socket.readyState === WebSocket.OPEN) socket.send('not json');
+				return;
+			}
 			if (typeof this.onIdentify === 'object') {
 				socket.close(this.onIdentify.closeWith);
 				return;

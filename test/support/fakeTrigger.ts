@@ -8,6 +8,7 @@ export interface FakeTriggerOptions {
 	nodeId?: string;
 	token?: string;
 	failGatewayBotTimes?: number;
+	gatewayBotHttpStatus?: number;
 	staticData?: IDataObject;
 }
 
@@ -16,6 +17,7 @@ export interface FakeTrigger extends ITriggerFunctions {
 	errors: Error[];
 	rest: Array<{ method: string; url: string; body?: unknown }>;
 	staticData: IDataObject;
+	gatewayBotHttpStatus?: number;
 }
 
 const DEFAULT_PARAMS: Record<string, unknown> = {
@@ -37,6 +39,7 @@ export function createFakeTrigger(opts: FakeTriggerOptions): FakeTrigger {
 		errors: [] as Error[],
 		rest: [] as Array<{ method: string; url: string; body?: unknown }>,
 		staticData,
+		gatewayBotHttpStatus: opts.gatewayBotHttpStatus,
 		getCredentials: async () => ({ botToken: opts.token ?? 'test-token' }),
 		getNodeParameter: (name: string, fallback?: unknown) =>
 			name in params ? params[name] : fallback,
@@ -60,6 +63,11 @@ export function createFakeTrigger(opts: FakeTriggerOptions): FakeTrigger {
 				const { method, url, body } = request;
 				trigger.rest.push({ method, url, body });
 				if (method === 'GET' && url.endsWith('/gateway/bot')) {
+					if (trigger.gatewayBotHttpStatus !== undefined) {
+						throw Object.assign(new Error('Authorization failed - please check your credentials'), {
+							httpCode: String(trigger.gatewayBotHttpStatus),
+						});
+					}
 					if (gatewayFailures > 0) {
 						gatewayFailures--;
 						throw new Error('fake gateway/bot failure');

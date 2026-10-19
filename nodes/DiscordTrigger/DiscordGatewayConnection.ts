@@ -12,7 +12,12 @@ import { calculateIntents } from '../Discord/shared/intents';
 import type { AlertSink } from './alerts';
 import { FatalGatewayError } from './errors';
 import { shouldEmitGatewayEvent } from './events/policies';
-import { GatewayWebSocket, type DisconnectInfo, type GatewayResumeState } from './GatewayWebSocket';
+import {
+	GatewayWebSocket,
+	RECONNECT_CLOSE_CODE,
+	type DisconnectInfo,
+	type GatewayResumeState,
+} from './GatewayWebSocket';
 import {
 	DEFAULT_BACKOFF,
 	IdentifyBudget,
@@ -24,6 +29,7 @@ import { PACKAGE_VERSION } from './version';
 const NODE_TYPE = 'n8n-nodes-discord.discordTrigger';
 const SESSION_KEYS = ['sessionId', 'sequence', 'resumeGatewayUrl'];
 const MAX_WAIT_STEP_MS = 1000;
+const AUTH_FAILURE_STATUSES = [401, 403];
 
 export interface DiscordGatewayConnectionOptions {
 	backoff?: BackoffOptions;
@@ -32,6 +38,7 @@ export interface DiscordGatewayConnectionOptions {
 	alertAfterMs?: number;
 	outageCheckMs?: number;
 	now?: () => number;
+	connectTimeoutMs?: number;
 }
 
 export class DiscordGatewayConnection {
@@ -40,6 +47,7 @@ export class DiscordGatewayConnection {
 	private reconnectAttempts = 0;
 	private readonly backoff: BackoffOptions;
 	private readonly identifyBudget: IdentifyBudget;
+	private readonly connectTimeoutMs?: number;
 
 	constructor(
 		private readonly trigger: ITriggerFunctions,
@@ -49,6 +57,7 @@ export class DiscordGatewayConnection {
 	) {
 		this.backoff = options.backoff ?? DEFAULT_BACKOFF;
 		this.identifyBudget = options.identifyBudget ?? new IdentifyBudget();
+		this.connectTimeoutMs = options.connectTimeoutMs;
 	}
 
 	async start(): Promise<void> {
@@ -105,16 +114,18 @@ export class DiscordGatewayConnection {
 		if (this.closing) return;
 		const ws = this.createWebSocket(gatewayUrl);
 		this.ws = ws;
-		try {
-			await ws.connect({
+		await ws
+			.connect({
 				token,
 				intents,
 				resumeState,
 				onIdentify: () => this.identifyBudget.record(),
-			});
-		} finally {
-			this.persistSessionState();
-		}
+			})
+			.catch((error: unknown) => {
+				void ws.close(RECONNECT_CLOSE_CODE);
+				throw error;
+			})
+			.finally(() => this.persistSessionState());
 
 		if (this.closing) {
 			await ws.close();
@@ -125,20 +136,27 @@ export class DiscordGatewayConnection {
 	}
 
 	private handleConnectFailure(error: unknown): void {
-		if (this.closing) return;
+		try {
+			if (this.closing) return;
 
-		if (error instanceof FatalGatewayError) {
-			this.stopForGood(error.message);
-			return;
+			if (error instanceof FatalGatewayError) {
+				this.stopForGood(error.message);
+				return;
+			}
+
+			LoggerProxy.warn('Discord Gateway connection attempt failed, retrying', {
+				error: error instanceof Error ? error.message : String(error),
+				attempt: this.reconnectAttempts + 1,
+				workflowId: this.trigger.getWorkflow().id,
+				nodeType: NODE_TYPE,
+			});
+			this.scheduleReconnect();
+		} catch (handlerError) {
+			LoggerProxy.error('Discord Gateway failed to handle a connection failure', {
+				error: handlerError instanceof Error ? handlerError.message : String(handlerError),
+				nodeType: NODE_TYPE,
+			});
 		}
-
-		LoggerProxy.warn('Discord Gateway connection attempt failed, retrying', {
-			error: error instanceof Error ? error.message : String(error),
-			attempt: this.reconnectAttempts + 1,
-			workflowId: this.trigger.getWorkflow().id,
-			nodeType: NODE_TYPE,
-		});
-		this.scheduleReconnect();
 	}
 
 	private handleDisconnect(info: DisconnectInfo): void {
@@ -201,15 +219,22 @@ export class DiscordGatewayConnection {
 	}
 
 	private async getGatewayUrl(): Promise<string> {
-		const response = await this.trigger.helpers.httpRequestWithAuthentication.call(
-			this.trigger,
-			'discordGatewayBotApi',
-			{
+		const response = await this.trigger.helpers.httpRequestWithAuthentication
+			.call(this.trigger, 'discordGatewayBotApi', {
 				method: 'GET',
 				url: `${DISCORD_API_BASE_URL}/gateway/bot`,
 				json: true,
-			},
-		);
+			})
+			.catch((error: unknown) => {
+				const status = httpStatusOf(error);
+				if (status !== undefined && AUTH_FAILURE_STATUSES.includes(status)) {
+					throw new FatalGatewayError(
+						4004,
+						`Discord rejected the bot token (HTTP ${status} from /gateway/bot). Check the Discord Gateway Bot API credential.`,
+					);
+				}
+				throw error;
+			});
 
 		const data = response as IDataObject;
 		return data.url as string;
@@ -221,7 +246,7 @@ export class DiscordGatewayConnection {
 			this.trigger.getWorkflow().id || '',
 			(eventName, data, raw) => this.handleEvent(eventName, data, raw),
 			(info) => this.handleDisconnect(info),
-			{ random: this.backoff.random },
+			{ random: this.backoff.random, connectTimeoutMs: this.connectTimeoutMs },
 		);
 	}
 
@@ -293,4 +318,25 @@ export class DiscordGatewayConnection {
 			}
 		}
 	}
+}
+
+function httpStatusOf(error: unknown): number | undefined {
+	if (typeof error !== 'object' || error === null) return undefined;
+	const candidate = error as {
+		httpCode?: unknown;
+		statusCode?: unknown;
+		status?: unknown;
+		response?: { status?: unknown; statusCode?: unknown };
+	};
+	for (const value of [
+		candidate.httpCode,
+		candidate.statusCode,
+		candidate.status,
+		candidate.response?.status,
+		candidate.response?.statusCode,
+	]) {
+		const status = Number(value);
+		if (Number.isInteger(status) && status > 0) return status;
+	}
+	return undefined;
 }

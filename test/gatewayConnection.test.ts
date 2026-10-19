@@ -201,8 +201,51 @@ describe('DiscordGatewayConnection', () => {
 		const { connection } = await setup({}, { identifyBudget: new IdentifyBudget(3) });
 		gateway.onIdentify = { closeWith: 4003 };
 		await connection.start();
-		await sleep(1000);
+		await expect.poll(() => countOp(2)).toBe(3);
+		await sleep(300);
 		expect(countOp(2)).toBe(3);
+	});
+
+	it.each([401, 403])('HTTP %i from /gateway/bot at activation is fatal', async (status) => {
+		const { trigger, connection } = await setup({ gatewayBotHttpStatus: status });
+		const error = await connection.start().catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(FatalGatewayError);
+		expect((error as FatalGatewayError).closeCode).toBe(4004);
+		expect(gateway.connections.length).toBe(0);
+		expect(trigger.rest.length).toBe(1);
+	});
+
+	it('HTTP 401 from /gateway/bot on reconnect stops for good', async () => {
+		const { trigger, connection } = await setup();
+		await connection.start();
+		trigger.gatewayBotHttpStatus = 401;
+		gateway.sendToAll({ op: 9, d: false });
+		await expect.poll(() => trigger.errors.length).toBe(1);
+		await sleep(300);
+		expect(trigger.errors.length).toBe(1);
+		expect(trigger.errors[0]).toBeInstanceOf(NodeOperationError);
+		expect(gateway.connections.length).toBe(1);
+		expect(trigger.rest.filter((r) => r.url.endsWith('/gateway/bot')).length).toBe(2);
+	});
+
+	it('a failed handshake closes its socket before reconnecting', async () => {
+		const { trigger, connection } = await setup();
+		gateway.malformedIdentifyReplies = 1;
+		await connection.start();
+		await expect.poll(() => trigger.staticData.sessionId).toBe('sess-1');
+		await expect.poll(() => gateway.connections[0].closeCode).toBe(4900);
+		await expect.poll(() => gateway.openConnections).toBe(1);
+		expect(gateway.connections.length).toBe(2);
+	});
+
+	it('a missing HELLO times out and retries', async () => {
+		const { trigger, connection } = await setup({}, { connectTimeoutMs: 100 });
+		gateway.sendHello = false;
+		await connection.start();
+		await expect.poll(() => gateway.connections.length).toBeGreaterThanOrEqual(2);
+		gateway.sendHello = true;
+		await expect.poll(() => trigger.staticData.sessionId, { timeout: 2000 }).toBe('sess-1');
+		expect(gateway.connections[0].closeCode).toBe(4900);
 	});
 
 	it('logs the package version on READY and RESUMED', async () => {

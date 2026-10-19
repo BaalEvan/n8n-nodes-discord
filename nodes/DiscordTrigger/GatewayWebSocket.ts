@@ -13,7 +13,8 @@ const OPCODE_HELLO = 10;
 const OPCODE_HEARTBEAT_ACK = 11;
 
 // Any close code other than 1000/1001 keeps the session resumable on Discord's side.
-const RECONNECT_CLOSE_CODE = 4900;
+export const RECONNECT_CLOSE_CODE = 4900;
+const DEFAULT_CONNECT_TIMEOUT_MS = 30000;
 const NEW_SESSION_CLOSE_CODES = [4007, 4009];
 
 type EventHandler = (eventName: string, data: IDataObject, raw: IDataObject) => void;
@@ -40,6 +41,7 @@ interface GatewayIdentifyOptions {
 
 export interface GatewayWebSocketOptions {
 	random?: () => number;
+	connectTimeoutMs?: number;
 }
 
 export class GatewayWebSocket {
@@ -53,6 +55,7 @@ export class GatewayWebSocket {
 	private ready = false;
 	private pendingConnectReject: ((error: Error) => void) | null = null;
 	private readonly random: () => number;
+	private readonly connectTimeoutMs: number;
 
 	constructor(
 		private readonly gatewayUrl: string,
@@ -62,6 +65,7 @@ export class GatewayWebSocket {
 		options: GatewayWebSocketOptions = {},
 	) {
 		this.random = options.random ?? Math.random;
+		this.connectTimeoutMs = options.connectTimeoutMs ?? DEFAULT_CONNECT_TIMEOUT_MS;
 	}
 
 	async connect(options: GatewayIdentifyOptions): Promise<void> {
@@ -90,6 +94,16 @@ export class GatewayWebSocket {
 				this.pendingConnectReject = null;
 				reject(error);
 			};
+
+			void sleep(this.connectTimeoutMs).then(() => {
+				if (settled) return;
+				settleReject(
+					new ApplicationError(
+						`Discord Gateway handshake did not complete within ${this.connectTimeoutMs} ms`,
+					),
+				);
+				void this.close(RECONNECT_CLOSE_CODE);
+			});
 
 			try {
 				this.ws = new WebSocket(url);
