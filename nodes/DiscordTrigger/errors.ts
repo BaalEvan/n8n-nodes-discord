@@ -16,3 +16,24 @@ export class FatalGatewayError extends ApplicationError {
 		this.closeCode = closeCode;
 	}
 }
+
+export function httpStatusOf(error: unknown): number | undefined {
+	if (typeof error !== 'object' || error === null) return undefined;
+	const candidate = error as {
+		httpCode?: unknown;
+		statusCode?: unknown;
+		status?: unknown;
+		response?: { status?: unknown; statusCode?: unknown };
+	};
+	for (const value of [
+		candidate.httpCode,
+		candidate.statusCode,
+		candidate.status,
+		candidate.response?.status,
+		candidate.response?.statusCode,
+	]) {
+		const status = Number(value);
+		if (Number.isInteger(status) && status > 0) return status;
+	}
+	return undefined;
+}

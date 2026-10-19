@@ -65,10 +65,9 @@ describe('owner alerts', () => {
 		expect(channelPosts(trigger)).toHaveLength(1);
 		expect(channelPosts(trigger)[0].body).toEqual({ recipient_id: '42' });
 
+		gateway.onIdentify = { closeWith: 4014 };
 		const second = createConnection(trigger, token);
-		await second.start();
-		gateway.closeAll(4014);
-		await expect.poll(() => trigger.errors.length).toBe(2);
+		await expect(second.start()).rejects.toThrow();
 		await sleep(150);
 		expect(messagePosts(trigger)).toHaveLength(1);
 	});
@@ -115,13 +114,81 @@ describe('owner alerts', () => {
 		expect(messagePosts(trigger)).toHaveLength(3);
 	});
 
-	it('no alertUserId means no REST alert calls', async () => {
-		const { trigger, token } = await setup('tok-none');
-		const connection = createConnection(trigger, token, '');
+	it('logs a failed alert without request details', async () => {
+		const warnings: unknown[][] = [];
+		LoggerProxy.init({
+			error: noop,
+			warn: (...a: unknown[]) => warnings.push(a),
+			info: noop,
+			debug: noop,
+		} as never);
+		const { trigger, token } = await setup('tok-log');
+		trigger.failMessagePosts = 1;
+		const sink = createDmAlertSink(trigger, '42');
+		expect(await sink.send('down', 'x')).toBe(false);
+		const alertWarnings = warnings.filter((w) => w[0] === 'Discord owner alert failed');
+		expect(alertWarnings).toHaveLength(1);
+		const meta = alertWarnings[0][1] as Record<string, unknown>;
+		expect(meta.kind).toBe('down');
+		expect(meta.error).toBe('fake message POST failure');
+		expect(Object.keys(meta).sort()).toEqual(['error', 'kind', 'nodeType', 'status']);
+		expect(JSON.stringify(meta)).not.toContain(token);
+	});
+
+	it('retries the channel POST after it failed', async () => {
+		const { trigger } = await setup('tok-chan');
+		trigger.failChannelPosts = 1;
+		const sink = createDmAlertSink(trigger, '42');
+		expect(await sink.send('down', 'a')).toBe(false);
+		expect(await sink.send('down', 'a')).toBe(true);
+		expect(channelPosts(trigger)).toHaveLength(2);
+		expect(messagePosts(trigger)).toHaveLength(1);
+	});
+
+	it('a later fatal on the same token alerts again after a READY', async () => {
+		const { trigger, token } = await setup('tok-rearm');
+		const first = createConnection(trigger, token);
+		await first.start();
+		gateway.closeAll(4014);
+		await expect.poll(() => messagePosts(trigger).length).toBe(1);
+
+		const second = createConnection(trigger, token);
+		await second.start();
+		await expect.poll(() => gateway.openConnections).toBe(1);
+		gateway.closeAll(4014);
+		await expect.poll(() => messagePosts(trigger).length).toBe(2);
+	});
+
+	it('sends recovered when READY arrives while the down alert is in flight', async () => {
+		const { trigger, token } = await setup('tok-inflight');
+		let release = noop;
+		trigger.messagePostGate = new Promise<void>((resolve) => (release = resolve));
+		const connection = createConnection(trigger, token);
 		await connection.start();
+		const port = gateway.port;
 		await gateway.stop();
-		await sleep(300);
-		await connection.close();
-		expect(trigger.rest.filter((r) => r.method === 'POST')).toHaveLength(0);
+		await expect.poll(() => messagePosts(trigger).length).toBe(1);
+		await gateway.start(port);
+		await expect.poll(() => gateway.connections.length).toBeGreaterThanOrEqual(2);
+		await sleep(150);
+		release();
+		await expect
+			.poll(() => contents(trigger).map((c) => c.slice(0, 22)))
+			.toEqual(['Discord bot has been d', 'Discord bot reconnecte']);
+	});
+
+	it('retries a failed recovered alert on the next check', async () => {
+		const { trigger, token } = await setup('tok-recov');
+		const connection = createConnection(trigger, token);
+		await connection.start();
+		const port = gateway.port;
+		await gateway.stop();
+		await expect.poll(() => messagePosts(trigger).length).toBe(1);
+		trigger.failMessagePosts = 1;
+		await gateway.start(port);
+		await expect.poll(() => messagePosts(trigger).length).toBe(3);
+		await sleep(150);
+		expect(messagePosts(trigger)).toHaveLength(3);
+		expect(contents(trigger)[2]).toBe(alertText('recovered', { minutes: 1 }));
 	});
 });

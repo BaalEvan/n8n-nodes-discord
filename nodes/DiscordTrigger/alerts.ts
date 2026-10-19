@@ -1,6 +1,7 @@
-import type { IDataObject, ITriggerFunctions } from 'n8n-workflow';
+import { LoggerProxy, type IDataObject, type ITriggerFunctions } from 'n8n-workflow';
 
 import { DISCORD_API_BASE_URL } from '../Discord/shared/constants';
+import { httpStatusOf } from './errors';
 
 export type AlertKind = 'fatal' | 'down' | 'recovered';
 
@@ -35,6 +36,12 @@ export function claimFatalAlert(key: string): boolean {
 	return true;
 }
 
+export function releaseFatalAlerts(fingerprint: string): void {
+	for (const key of sentFatalAlerts) {
+		if (key.startsWith(`${fingerprint}:`)) sentFatalAlerts.delete(key);
+	}
+}
+
 export function createDmAlertSink(trigger: ITriggerFunctions, userId: string): AlertSink {
 	let channelId: string | undefined;
 
@@ -47,7 +54,7 @@ export function createDmAlertSink(trigger: ITriggerFunctions, userId: string): A
 		}) as Promise<IDataObject>;
 
 	return {
-		async send(_kind, text) {
+		async send(kind, text) {
 			try {
 				if (!channelId) {
 					const channel = await request('/users/@me/channels', { recipient_id: userId });
@@ -56,7 +63,13 @@ export function createDmAlertSink(trigger: ITriggerFunctions, userId: string): A
 				}
 				await request(`/channels/${channelId}/messages`, { content: text });
 				return true;
-			} catch {
+			} catch (error) {
+				LoggerProxy.warn('Discord owner alert failed', {
+					kind,
+					status: httpStatusOf(error),
+					error: error instanceof Error ? error.message : String(error),
+					nodeType: 'n8n-nodes-discord.discordTrigger',
+				});
 				return false;
 			}
 		},

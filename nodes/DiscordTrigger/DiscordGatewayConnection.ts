@@ -9,10 +9,10 @@ import {
 
 import { DISCORD_API_BASE_URL } from '../Discord/shared/constants';
 import { calculateIntents } from '../Discord/shared/intents';
-import { alertText, claimFatalAlert, type AlertSink } from './alerts';
+import { alertText, claimFatalAlert, releaseFatalAlerts, type AlertSink } from './alerts';
 import { getCloseCodeMeta } from './closeCodes';
 import { tokenFingerprint } from './connectionRegistry';
-import { FatalGatewayError } from './errors';
+import { FatalGatewayError, httpStatusOf } from './errors';
 import { shouldEmitGatewayEvent } from './events/policies';
 import {
 	GatewayWebSocket,
@@ -62,6 +62,8 @@ export class DiscordGatewayConnection {
 	private downSince: number | null = null;
 	private downAlertSent = false;
 	private outageLoopRunning = false;
+	private lastUpAt = 0;
+	private pendingRecovered: string | null = null;
 
 	constructor(
 		private readonly trigger: ITriggerFunctions,
@@ -282,14 +284,33 @@ export class DiscordGatewayConnection {
 
 	private async checkOutage(): Promise<void> {
 		const sink = this.alertSink;
+		if (!sink) return;
+
+		const pending = this.pendingRecovered;
+		if (pending !== null) {
+			this.pendingRecovered = null;
+			await sink.send('recovered', pending);
+		}
+
 		const downSince = this.downSince;
-		if (!sink || downSince === null || this.downAlertSent) return;
+		if (downSince === null || this.downAlertSent) return;
 		const elapsed = this.now() - downSince;
 		if (elapsed < this.alertAfterMs) return;
 		const sent = await sink.send('down', alertText('down', { minutes: toMinutes(elapsed) }));
-		if (sent && this.downSince !== null) {
+		if (!sent) return;
+		if (this.downSince === downSince) {
 			this.downAlertSent = true;
+			return;
 		}
+		await this.sendRecovered(toMinutes(this.lastUpAt - downSince));
+	}
+
+	private async sendRecovered(minutes: number): Promise<void> {
+		const sink = this.alertSink;
+		if (!sink) return;
+		const text = alertText('recovered', { minutes });
+		const sent = await sink.send('recovered', text).catch(() => false);
+		if (!sent) this.pendingRecovered = text;
 	}
 
 	private markUp(): void {
@@ -298,9 +319,9 @@ export class DiscordGatewayConnection {
 		const alerted = this.downAlertSent;
 		this.downSince = null;
 		this.downAlertSent = false;
-		if (alerted && this.alertSink) {
-			const text = alertText('recovered', { minutes: toMinutes(this.now() - downSince) });
-			void this.alertSink.send('recovered', text).catch(() => false);
+		this.lastUpAt = this.now();
+		if (alerted) {
+			void this.sendRecovered(toMinutes(this.lastUpAt - downSince));
 		}
 	}
 
@@ -339,6 +360,7 @@ export class DiscordGatewayConnection {
 	private handleEvent(eventName: string, data: IDataObject, raw: IDataObject): void {
 		this.persistSessionState();
 		if (eventName === 'READY' || eventName === 'RESUMED') {
+			releaseFatalAlerts(this.fingerprint);
 			this.markUp();
 			LoggerProxy.info('Discord Gateway connected', {
 				version: PACKAGE_VERSION,
@@ -409,25 +431,4 @@ export class DiscordGatewayConnection {
 
 function toMinutes(ms: number): number {
 	return Math.max(1, Math.round(ms / MS_PER_MINUTE));
-}
-
-function httpStatusOf(error: unknown): number | undefined {
-	if (typeof error !== 'object' || error === null) return undefined;
-	const candidate = error as {
-		httpCode?: unknown;
-		statusCode?: unknown;
-		status?: unknown;
-		response?: { status?: unknown; statusCode?: unknown };
-	};
-	for (const value of [
-		candidate.httpCode,
-		candidate.statusCode,
-		candidate.status,
-		candidate.response?.status,
-		candidate.response?.statusCode,
-	]) {
-		const status = Number(value);
-		if (Number.isInteger(status) && status > 0) return status;
-	}
-	return undefined;
 }

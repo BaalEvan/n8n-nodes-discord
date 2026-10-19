@@ -20,6 +20,7 @@ export interface FakeTrigger extends ITriggerFunctions {
 	gatewayBotHttpStatus?: number;
 	failMessagePosts: number;
 	failChannelPosts: number;
+	messagePostGate: Promise<void> | null;
 }
 
 const DEFAULT_PARAMS: Record<string, unknown> = {
@@ -44,6 +45,7 @@ export function createFakeTrigger(opts: FakeTriggerOptions): FakeTrigger {
 		gatewayBotHttpStatus: opts.gatewayBotHttpStatus,
 		failMessagePosts: 0,
 		failChannelPosts: 0,
+		messagePostGate: null as Promise<void> | null,
 		getCredentials: async () => ({ botToken: opts.token ?? 'test-token' }),
 		getNodeParameter: (name: string, fallback?: unknown) =>
 			name in params ? params[name] : fallback,
@@ -86,6 +88,7 @@ export function createFakeTrigger(opts: FakeTriggerOptions): FakeTrigger {
 					return { id: 'dm-1' };
 				}
 				if (method === 'POST' && url.endsWith('/channels/dm-1/messages')) {
+					if (trigger.messagePostGate) await trigger.messagePostGate;
 					if (trigger.failMessagePosts > 0) {
 						trigger.failMessagePosts--;
 						throw new Error('fake message POST failure');
