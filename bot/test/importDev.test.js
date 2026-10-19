@@ -123,7 +123,10 @@ describe('optional ClickUp credential', () => {
 	});
 
 	it('injects the id once the credential exists', () => {
-		const withClickUp = [...credentials, { id: 'C9', name: 'ClickUp (Client)', type: 'clickUpApi' }];
+		const withClickUp = [
+			...credentials,
+			{ id: 'C9', name: 'ClickUp (Client)', type: 'clickUpApi' },
+		];
 		const { body, missing } = prepareWorkflow(built['helpers/clickup-get-task'], {
 			credentials: withClickUp,
 			ownerId: OWNER,
@@ -191,7 +194,10 @@ describe('importDev skip', () => {
 		expect(upsert).toBeTruthy();
 		expect(upsert.body.data.value).toMatch(/^ID\d+$/);
 		const helperSave = calls.findIndex(
-			(c) => c.method === 'POST' && c.p === '/workflows' && c.body.name === 'Discord Helper: ClickUp Get Task',
+			(c) =>
+				c.method === 'POST' &&
+				c.p === '/workflows' &&
+				c.body.name === 'Discord Helper: ClickUp Get Task',
 		);
 		const clSave = calls.findIndex(
 			(c) => c.method === 'POST' && c.p === '/workflows' && c.body.name === 'Discord Command: cl',
@@ -200,17 +206,53 @@ describe('importDev skip', () => {
 		expect(helperSave).toBeLessThan(clSave);
 	});
 
-	it('tags only the five command workflows, not the helper', async () => {
+	it('tags only the six command workflows, not the helper', async () => {
 		const calls = stubApi();
 		await run(['router', 'sync']);
 		const tagged = calls.filter((c) => c.method === 'PUT' && c.p.endsWith('/tags'));
-		expect(tagged).toHaveLength(5);
+		expect(tagged).toHaveLength(6);
+	});
+
+	it('adds webhookBase only when it is missing', async () => {
+		const calls = stubApi();
+		await run(['router', 'sync']);
+		const up = calls.filter(
+			(c) => c.p.endsWith('/rows/upsert') && c.body.data.key === 'webhookBase',
+		);
+		expect(up).toHaveLength(1);
+		expect(up[0].body.data.value).toBe('https://black-n8n.potoroo-scylla.ts.net');
+	});
+
+	it('leaves an existing webhookBase alone', async () => {
+		const calls = stubApi();
+		const base = globalThis.fetch;
+		vi.stubGlobal('fetch', async (url, init = {}) => {
+			if ((init.method || 'GET') === 'GET' && new URL(url).pathname.endsWith('/rows')) {
+				return {
+					ok: true,
+					status: 200,
+					text: async () =>
+						JSON.stringify({ data: [{ key: 'webhookBase', value: 'http://localhost:5678' }] }),
+				};
+			}
+			return base(url, init);
+		});
+		await run(['router', 'sync']);
+		expect(
+			calls.filter((c) => c.p.endsWith('/rows/upsert') && c.body.data.key === 'webhookBase'),
+		).toEqual([]);
+	});
+
+	it('imports the changelog command before the router', () => {
+		expect(ORDER).toContain('commands/changelog');
+		expect(PUBLISH.has('commands/changelog')).toBe(true);
+		expect(ORDER.indexOf('commands/changelog')).toBeLessThan(ORDER.indexOf('router'));
 	});
 
 	it('rejects an unknown key and lists the valid ones, before any request', async () => {
 		const calls = stubApi();
 		await expect(run(['routr'])).rejects.toThrow(
-			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, helpers/clickup-get-task, commands/cl, commands/parse, commands/preview, router',
+			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, helpers/clickup-get-task, commands/changelog, commands/cl, commands/parse, commands/preview, router',
 		);
 		expect(calls).toEqual([]);
 	});

@@ -13,6 +13,7 @@ export const DEV_DEFAULTS = {
 	ownerId: '181510541934592000',
 	guildIds: ['181510887037861898'],
 	botUserId: '1523209189319774249',
+	webhookBase: 'https://black-n8n.potoroo-scylla.ts.net',
 };
 
 export const COMMAND_TAG = 'discord-command';
@@ -212,6 +213,8 @@ export async function importDev({
 		botUserId: config.botUserId ?? current.botUserId ?? DEV_DEFAULTS.botUserId,
 	};
 	for (const [key, value] of Object.entries(wanted)) await upsertConfig(api, cfgTable, key, value);
+	if (!current.webhookBase)
+		await upsertConfig(api, cfgTable, 'webhookBase', DEV_DEFAULTS.webhookBase);
 	const ownerId = (await readConfig(api, cfgTable)).ownerId;
 
 	const credentials = await api.all('/credentials');

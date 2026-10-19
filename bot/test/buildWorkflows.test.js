@@ -133,6 +133,7 @@ describe('built workflows', () => {
 		expect(Object.keys(built).sort()).toEqual(
 			[
 				'command-template',
+				'commands/changelog',
 				'commands/cl',
 				'commands/parse',
 				'commands/preview',
@@ -153,6 +154,7 @@ describe('built workflows', () => {
 		expect(built['commands/parse'].name).toBe('Discord Command: parse');
 		expect(built['commands/preview'].name).toBe('Discord Command: preview');
 		expect(built['commands/cl'].name).toBe('Discord Command: cl');
+		expect(built['commands/changelog'].name).toBe('Discord Command: changelog');
 		expect(built['helpers/clickup-get-task'].name).toBe('Discord Helper: ClickUp Get Task');
 	});
 
@@ -1118,12 +1120,119 @@ describe('cl command', () => {
 	});
 });
 
+describe('changelog command', () => {
+	const wf = built['commands/changelog'];
+	const TRIGGER = 'When called by another workflow';
+	const build = (options, value = 'https://hook.example/') =>
+		runCode(wf, 'Build URL', {
+			nodes: { [TRIGGER]: [{ json: { mode: 'command', interaction: { options } } }] },
+			input: [{ json: { key: 'webhookBase', value } }],
+		});
+
+	it('is a tagged discord-command with the recipe definition', () => {
+		expect(wf.tags.map((t) => t.name)).toEqual(['discord-command']);
+		const parsed = parseDefinition(node(wf, 'Command Definition').parameters.jsonOutput);
+		expect(parsed.ok).toBe(true);
+		expect(parsed.definition).toEqual({
+			name: 'changelog',
+			description: 'Fetch changelog for a specific build',
+			options: [
+				{
+					type: 3,
+					name: 'buildid',
+					description: 'The Build ID to fetch changelog for',
+					required: true,
+				},
+				{
+					type: 5,
+					name: 'skipai',
+					description: 'Do you want to skip AI translation',
+					required: false,
+				},
+			],
+			ephemeral: true,
+			whitelist: { users: [], roles: [] },
+		});
+	});
+
+	it('wires command -> Load Config -> Build URL -> Call Hook -> Reply OK / Reply Failed', () => {
+		expect(targets(wf, 'Switch on mode', 0)).toEqual(['Load Config']);
+		expect(targets(wf, 'Load Config')).toEqual(['Build URL']);
+		expect(targets(wf, 'Build URL')).toEqual(['Call Hook']);
+		expect(targets(wf, 'Call Hook', 0)).toEqual(['Reply OK']);
+		expect(targets(wf, 'Call Hook', 1)).toEqual(['Reply Failed']);
+		expect(targets(wf, 'Reply OK')).toEqual([]);
+		expect(targets(wf, 'Reply Failed')).toEqual([]);
+	});
+
+	it('Load Config reads webhookBase from discord_config', () => {
+		const n = node(wf, 'Load Config');
+		expect(n.type).toBe('n8n-nodes-base.dataTable');
+		expect(n.parameters.dataTableId.value).toBe('discord_config');
+		expect(n.parameters.filters.conditions).toEqual([
+			{ keyName: 'key', condition: 'eq', keyValue: 'webhookBase' },
+		]);
+		expect(n.notes).toContain('http://localhost:5678');
+	});
+
+	it('Call Hook is an unauthenticated GET returning text, 60s timeout, error output', () => {
+		const n = node(wf, 'Call Hook');
+		expect(n.type).toBe('n8n-nodes-base.httpRequest');
+		expect(n.parameters.method).toBe('GET');
+		expect(n.parameters.url).toBe('={{ $json.url }}');
+		expect(n.parameters.authentication ?? 'none').toBe('none');
+		expect(n.credentials).toBeUndefined();
+		expect(n.parameters.options.response.response.responseFormat).toBe('text');
+		expect(n.parameters.options.timeout).toBe(60000);
+		expect(n.onError).toBe('continueErrorOutput');
+	});
+
+	it('Build URL maps the three skipai cases and encodes the build id', () => {
+		const url = (b) => build(b)[0].json.url;
+		const head = 'https://hook.example/webhook/hg-build-hook?BuildID=';
+		expect(url({ buildid: '905' })).toBe(`${head}905`);
+		expect(url({ buildid: '905', skipai: true })).toBe(`${head}905&SkipAI=True`);
+		expect(url({ buildid: '905', skipai: false })).toBe(`${head}905&SkipAI=`);
+		expect(url({ buildid: 'a b&c' })).toBe(`${head}a%20b%26c`);
+		expect(url({ buildid: '900-905' })).toBe(`${head}900-905`);
+	});
+
+	it('Build URL gives an empty url when webhookBase is missing, so Call Hook fails to the error reply', () => {
+		const r = runCode(wf, 'Build URL', {
+			nodes: { [TRIGGER]: [{ json: { interaction: { options: { buildid: '1' } } } }] },
+			input: [{ json: {} }],
+		});
+		expect(r).toEqual([{ json: { url: '' } }]);
+	});
+
+	it('Reply OK says the request was sent', () => {
+		expect(node(wf, 'Reply OK').parameters.jsonOutput).toContain('Asked backend for changelog');
+	});
+
+	it('Reply Failed reads status or message from the error output', () => {
+		const reply = (error) => runCode(wf, 'Reply Failed', { input: [{ json: { error } }] });
+		expect(reply({ httpCode: '404', message: 'x' })).toEqual([
+			{ json: { content: 'Failed to fetch changelog. Status: 404' } },
+		]);
+		expect(reply({ message: 'ENOTFOUND' })).toEqual([
+			{ json: { content: 'Error fetching changelog: ENOTFOUND' } },
+		]);
+	});
+
+	it('has no Discord nodes, no credentials and no unresolved inline marker', () => {
+		expect(wf.nodes.filter((n) => n.type.startsWith('CUSTOM.'))).toEqual([]);
+		expect(wf.nodes.filter((n) => n.credentials)).toEqual([]);
+		for (const n of codeNodes(wf)) expect(n.parameters.jsCode).not.toContain('//@inline');
+	});
+});
+
 describe('writeAll', () => {
 	it('writes one importable JSON file per template', () => {
 		const out = fs.mkdtempSync(path.join(os.tmpdir(), 'bot-dist-'));
 		const files = writeAll(BOT_DIR, out);
 		expect(files.map((f) => path.relative(out, f).split(path.sep).join('/')).sort()).toEqual([
 			'command-template.json',
+			'commands/changelog.json',
 			'commands/cl.json',
 			'commands/parse.json',
 			'commands/preview.json',
