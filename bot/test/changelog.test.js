@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 const { loadModule } = require('./load.js');
-const { buildChangelogUrl, replyFor, REPLY_OK, failedReply, errorReply } = loadModule('changelog');
+const { buildChangelogUrl, replyFor, REPLY_OK, NOT_CONFIGURED, failedReply, errorReply } =
+	loadModule('changelog');
 
 const BASE = 'https://hook.example';
 const PATH = '/webhook/hg-build-hook?BuildID=';
@@ -39,6 +40,9 @@ describe('buildChangelogUrl', () => {
 describe('reply copy', () => {
 	it('is word for word', () => {
 		expect(REPLY_OK).toBe('Asked backend for changelog');
+		expect(NOT_CONFIGURED).toBe(
+			"Changelog hook isn't configured (discord_config row webhookBase is missing).",
+		);
 		expect(failedReply(404)).toBe('Failed to fetch changelog. Status: 404');
 		expect(errorReply('boom')).toBe('Error fetching changelog: boom');
 	});

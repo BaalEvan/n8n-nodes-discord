@@ -1,4 +1,5 @@
 var REPLY_OK = 'Asked backend for changelog';
+var NOT_CONFIGURED = "Changelog hook isn't configured (discord_config row webhookBase is missing).";
 
 function buildChangelogUrl(base, buildid, skipai) {
 	var root = String(base === undefined || base === null ? '' : base).trim();
@@ -27,4 +28,11 @@ function replyFor(item) {
 }
 
 if (typeof module !== 'undefined')
-	module.exports = { buildChangelogUrl, replyFor, REPLY_OK, failedReply, errorReply };
+	module.exports = {
+		buildChangelogUrl,
+		replyFor,
+		REPLY_OK,
+		NOT_CONFIGURED,
+		failedReply,
+		errorReply,
+	};

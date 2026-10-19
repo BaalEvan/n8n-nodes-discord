@@ -195,7 +195,7 @@
 			"type": "n8n-nodes-base.httpRequest",
 			"typeVersion": 4.2,
 			"position": [
-				1100,
+				1320,
 				200
 			],
 			"parameters": {
@@ -219,7 +219,7 @@
 			"type": "n8n-nodes-base.set",
 			"typeVersion": 3.5,
 			"position": [
-				1320,
+				1540,
 				100
 			],
 			"parameters": {
@@ -234,13 +234,62 @@
 			"type": "n8n-nodes-base.code",
 			"typeVersion": 2,
 			"position": [
-				1320,
+				1540,
 				300
 			],
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
 				"jsCode": "//@inline lib/changelog.js\nreturn [{ json: { content: replyFor($input.first().json) } }];"
+			}
+		},
+		{
+			"id": "e2f3a4b5-3c4d-4e5f-8a61-7c8d9e0f1a20",
+			"name": "Has Hook",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1100,
+				200
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "e2f3a4b5-3c4d-4e5f-8a61-7c8d9e0f1a21",
+							"leftValue": "={{ $json.url || '' }}",
+							"rightValue": "",
+							"operator": {
+								"type": "string",
+								"operation": "notEmpty",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "e2f3a4b5-3c4d-4e5f-8a61-7c8d9e0f1a22",
+			"name": "Reply Not Configured",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				1320,
+				500
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify({ content: \"Changelog hook isn't configured (discord_config row webhookBase is missing).\" }) }}",
+				"options": {}
 			}
 		}
 	],
@@ -293,7 +342,7 @@
 			"main": [
 				[
 					{
-						"node": "Call Hook",
+						"node": "Has Hook",
 						"type": "main",
 						"index": 0
 					}
@@ -312,6 +361,24 @@
 				[
 					{
 						"node": "Reply Failed",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Has Hook": {
+			"main": [
+				[
+					{
+						"node": "Call Hook",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply Not Configured",
 						"type": "main",
 						"index": 0
 					}

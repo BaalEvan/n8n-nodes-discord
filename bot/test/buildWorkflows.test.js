@@ -1291,10 +1291,10 @@ describe('changelog command', () => {
 		});
 	});
 
-	it('wires command -> Load Config -> Build URL -> Call Hook -> Reply OK / Reply Failed', () => {
+	it('wires command -> Load Config -> Build URL -> Has Hook -> Call Hook -> Reply OK / Reply Failed', () => {
 		expect(targets(wf, 'Switch on mode', 0)).toEqual(['Load Config']);
 		expect(targets(wf, 'Load Config')).toEqual(['Build URL']);
-		expect(targets(wf, 'Build URL')).toEqual(['Call Hook']);
+		expect(targets(wf, 'Build URL')).toEqual(['Has Hook']);
 		expect(targets(wf, 'Call Hook', 0)).toEqual(['Reply OK']);
 		expect(targets(wf, 'Call Hook', 1)).toEqual(['Reply Failed']);
 		expect(targets(wf, 'Reply OK')).toEqual([]);
@@ -1339,6 +1339,19 @@ describe('changelog command', () => {
 			input: [{ json: {} }],
 		});
 		expect(r).toEqual([{ json: { url: '' } }]);
+	});
+
+	it('routes an empty url to a clear reply without calling the hook', () => {
+		const cond = node(wf, 'Has Hook').parameters.conditions.conditions[0];
+		expect(cond.leftValue).toBe("={{ $json.url || '' }}");
+		expect(cond.operator).toMatchObject({ type: 'string', operation: 'notEmpty' });
+		expect(targets(wf, 'Build URL')).toEqual(['Has Hook']);
+		expect(targets(wf, 'Has Hook', 0)).toEqual(['Call Hook']);
+		expect(targets(wf, 'Has Hook', 1)).toEqual(['Reply Not Configured']);
+		expect(targets(wf, 'Reply Not Configured')).toEqual([]);
+		expect(node(wf, 'Reply Not Configured').parameters.jsonOutput).toContain(
+			"Changelog hook isn't configured (discord_config row webhookBase is missing).",
+		);
 	});
 
 	it('Reply OK says the request was sent', () => {
