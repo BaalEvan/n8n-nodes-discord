@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { commandTemplateNames } from './build-workflows.mjs';
 
 export const TABLES = {
 	discord_commands: ['name', 'workflowId', 'definition'],
@@ -16,8 +17,14 @@ export const DEV_DEFAULTS = {
 
 export const COMMAND_TAG = 'discord-command';
 const OWNER_PLACEHOLDER = '__OWNER_ID__';
-const ORDER = ['sync', 'command-template', 'reload-commands', 'router'];
-const PUBLISH = new Set(['sync', 'command-template', 'reload-commands']);
+export const ORDER = [
+	'sync',
+	'command-template',
+	'reload-commands',
+	...commandTemplateNames(path.dirname(fileURLToPath(import.meta.url))),
+	'router',
+];
+export const PUBLISH = new Set(ORDER.filter((key) => key !== 'router'));
 
 export function prepareWorkflow(wf, { credentials, ownerId }) {
 	const out = structuredClone(wf);
@@ -162,7 +169,14 @@ async function ensureTag(api, name) {
 	return found ? found.id : (await api.call('POST', '/tags', { name })).id;
 }
 
-export async function importDev({ baseUrl, apiKey, distDir, config = {}, log = console.log }) {
+export async function importDev({
+	baseUrl,
+	apiKey,
+	distDir,
+	config = {},
+	skip = [],
+	log = console.log,
+}) {
 	const api = client(baseUrl, apiKey);
 	const tables = {};
 	for (const [name, columns] of Object.entries(TABLES)) {
@@ -189,6 +203,10 @@ export async function importDev({ baseUrl, apiKey, distDir, config = {}, log = c
 	const tagId = await ensureTag(api, COMMAND_TAG);
 	const result = {};
 	for (const key of ORDER) {
+		if (skip.includes(key)) {
+			log(`${key}: skipped`);
+			continue;
+		}
 		const wf = JSON.parse(fs.readFileSync(path.join(distDir, `${key}.json`), 'utf8'));
 		const { tags, body } = prepareWorkflow(wf, { credentials, ownerId });
 		const same = existing.filter((w) => w.name === body.name);
@@ -248,9 +266,10 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
 		apiKey: N8N_DEV_API_KEY,
 		distDir: path.join(botDir, 'dist'),
 		config,
+		skip: (process.env.IMPORT_SKIP || '').split(',').filter(Boolean),
 	})
 		.then((r) => {
-			console.log(`Discord Router (not published): ${r.workflows.router.id}`);
+			if (r.workflows.router) console.log(`Discord Router (not published): ${r.workflows.router.id}`);
 			console.log(`discord_config: ${JSON.stringify(r.config)}`);
 		})
 		.catch((error) => {

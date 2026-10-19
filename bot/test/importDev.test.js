@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { prepareWorkflow, sameContent } from '../import-dev.mjs';
+import { prepareWorkflow, sameContent, ORDER, PUBLISH } from '../import-dev.mjs';
 import { buildAll } from '../build-workflows.mjs';
 const path = require('path');
 
@@ -79,5 +79,19 @@ describe('sameContent', () => {
 		stored.nodes[0].parameters = { changed: true };
 		expect(sameContent(stored, body)).toBe(false);
 		expect(sameContent(null, body)).toBe(false);
+	});
+});
+
+describe('command templates', () => {
+	it('are imported and published before the router', () => {
+		expect(ORDER).toContain('commands/parse');
+		expect(PUBLISH.has('commands/parse')).toBe(true);
+		expect(ORDER.indexOf('commands/parse')).toBeLessThan(ORDER.indexOf('router'));
+	});
+
+	it('prepare with the discord-command tag', () => {
+		const { body, tags } = prepareWorkflow(built['commands/parse'], { credentials, ownerId: OWNER });
+		expect(tags).toEqual(['discord-command']);
+		expect(body.name).toBe('Discord Command: parse');
 	});
 });

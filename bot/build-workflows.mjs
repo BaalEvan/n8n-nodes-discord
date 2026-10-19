@@ -2,7 +2,22 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
-export const TEMPLATE_NAMES = ['router', 'sync', 'command-template', 'reload-commands'];
+const CORE_NAMES = ['router', 'sync', 'command-template', 'reload-commands'];
+
+export function commandTemplateNames(botDir) {
+	const dir = path.join(botDir, 'workflows', 'commands');
+	if (!fs.existsSync(dir)) return [];
+	return fs
+		.readdirSync(dir)
+		.filter((f) => f.endsWith('.template.json'))
+		.map((f) => `commands/${f.slice(0, -'.template.json'.length)}`)
+		.sort();
+}
+
+export const TEMPLATE_NAMES = [
+	...CORE_NAMES,
+	...commandTemplateNames(path.dirname(fileURLToPath(import.meta.url))),
+];
 
 const MARKER = '//@inline';
 const EXPORT_GUARD = /^if \(typeof module !== 'undefined'\) module\.exports = .*;[ \t]*$/gm;
@@ -51,7 +66,7 @@ function libReader(botDir) {
 export function buildAll(botDir) {
 	const readLib = libReader(botDir);
 	const out = {};
-	for (const name of TEMPLATE_NAMES) {
+	for (const name of [...CORE_NAMES, ...commandTemplateNames(botDir)]) {
 		const file = path.join(botDir, 'workflows', `${name}.template.json`);
 		out[name] = buildWorkflow(JSON.parse(fs.readFileSync(file, 'utf8')), readLib);
 	}
@@ -63,6 +78,7 @@ export function writeAll(botDir, outDir) {
 	fs.mkdirSync(outDir, { recursive: true });
 	return Object.entries(built).map(([name, wf]) => {
 		const file = path.join(outDir, `${name}.json`);
+		fs.mkdirSync(path.dirname(file), { recursive: true });
 		fs.writeFileSync(file, JSON.stringify(wf, null, '\t') + '\n');
 		return file;
 	});

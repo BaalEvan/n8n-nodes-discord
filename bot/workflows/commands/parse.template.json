@@ -1,0 +1,480 @@
+{
+	"name": "Discord Command: parse",
+	"nodes": [
+		{
+			"id": "b30e249a-5132-4fcc-ad1e-0a22d039fd85",
+			"name": "When called by another workflow",
+			"type": "n8n-nodes-base.executeWorkflowTrigger",
+			"typeVersion": 1.3,
+			"position": [
+				0,
+				300
+			],
+			"parameters": {
+				"inputSource": "passthrough"
+			}
+		},
+		{
+			"id": "242a1fad-1f5c-47e5-a27a-ddf2e65b581a",
+			"name": "Command Definition",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				220,
+				300
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "{\n  \"name\": \"parse\",\n  \"description\": \"Parse Log\",\n  \"options\": [\n    {\n      \"type\": 11,\n      \"name\": \"logfile\",\n      \"description\": \"Unity Player.Log\",\n      \"required\": true\n    }\n  ],\n  \"ephemeral\": false,\n  \"whitelist\": {\n    \"users\": [],\n    \"roles\": []\n  }\n}",
+				"options": {}
+			}
+		},
+		{
+			"id": "5c8969a4-b54e-4966-a841-79672b10fcc7",
+			"name": "Switch on mode",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				440,
+				300
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "e858b576-7d9b-4de9-a40e-e21a5efc39b4",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "command",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "command"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "ec2dcc01-0322-4e4b-ab74-b4bc7e8615c7",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "autocomplete",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "autocomplete"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "10045b00-ba83-408c-ad72-39847cf8f7e5",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "component",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "component"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "fd936efe-4e4e-4997-af50-b28d112972db",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "modal",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "modal"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "dafb378f-4772-58ca-8116-f8f88f6ba3f6",
+			"name": "Attachment",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				880,
+				200
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/parseLog.js\nconst found = findAttachment($('When called by another workflow').first().json.interaction);\nif (!found) return [{ json: { error: 'Could not load the log file attachment.' } }];\nreturn [{ json: found }];"
+			}
+		},
+		{
+			"id": "f562457e-8ba1-595a-89df-3a119ebaeeaf",
+			"name": "Has File",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1100,
+				200
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "f562457e-8ba1-595a-89df-3a119ebaeeaf",
+							"leftValue": "={{ !$json.error }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "8d1bd7b6-6918-5a6d-986e-72a247b7f7f1",
+			"name": "Reply Error",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				1320,
+				400
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify({ content: $json.error }) }}",
+				"options": {}
+			}
+		},
+		{
+			"id": "b569052c-4459-57e2-85ae-6d872a7ca7fb",
+			"name": "Download",
+			"type": "n8n-nodes-base.httpRequest",
+			"typeVersion": 4.2,
+			"position": [
+				1320,
+				100
+			],
+			"parameters": {
+				"method": "GET",
+				"url": "={{ $json.url }}",
+				"authentication": "none",
+				"options": {
+					"response": {
+						"response": {
+							"responseFormat": "text",
+							"outputPropertyName": "log"
+						}
+					}
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "d62a74f8-080c-5a17-9993-a7297b89b15e",
+			"name": "Reply Download Error",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				1540,
+				300
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "{\n  \"content\": \"Could not load the log file attachment.\"\n}",
+				"options": {}
+			}
+		},
+		{
+			"id": "f615e3ea-1971-59f7-aebc-82b4e745547a",
+			"name": "Parse",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1540,
+				100
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/parseLog.js\nconst result = parseLog($json.log, $('Attachment').first().json);\nif (result.mode === 'file') {\n\tconst data = Buffer.from(result.file, 'utf8').toString('base64');\n\treturn [{ json: { mode: 'file', content: result.content }, binary: { file: { data: data, mimeType: 'text/plain', fileName: 'exceptions.log' } } }];\n}\nreturn [{ json: { mode: 'embeds', content: result.content, embeds: result.embeds } }];"
+			}
+		},
+		{
+			"id": "90618504-9fb9-5d97-853e-c1e0bb3e25ac",
+			"name": "Mode",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				1760,
+				100
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "7d3266b5-97cf-5626-a062-eeb9eafd0b5c",
+										"leftValue": "={{ $json.mode }}",
+										"rightValue": "embeds",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "embeds"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "6f59174f-12f8-5c22-aa12-416e8d3dade3",
+										"leftValue": "={{ $json.mode }}",
+										"rightValue": "file",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "file"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "a782859a-27ff-529c-aa07-38b815c1da9d",
+			"name": "Reply",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				1980,
+				0
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify({ content: $json.content, embeds: $json.embeds }) }}",
+				"options": {}
+			}
+		},
+		{
+			"id": "ded8bc4b-af32-53cc-80b8-7d812f4a3ed6",
+			"name": "Reply File",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1980,
+				200
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "return [{ json: { content: $json.content }, binary: $input.first().binary }];"
+			}
+		}
+	],
+	"connections": {
+		"When called by another workflow": {
+			"main": [
+				[
+					{
+						"node": "Command Definition",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Command Definition": {
+			"main": [
+				[
+					{
+						"node": "Switch on mode",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Switch on mode": {
+			"main": [
+				[
+					{
+						"node": "Attachment",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Attachment": {
+			"main": [
+				[
+					{
+						"node": "Has File",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Has File": {
+			"main": [
+				[
+					{
+						"node": "Download",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply Error",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Download": {
+			"main": [
+				[
+					{
+						"node": "Parse",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply Download Error",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Parse": {
+			"main": [
+				[
+					{
+						"node": "Mode",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Mode": {
+			"main": [
+				[
+					{
+						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply File",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"tags": [
+		{
+			"name": "discord-command"
+		}
+	]
+}

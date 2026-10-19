@@ -77,6 +77,7 @@ const ALLOWED_TYPES = {
 	'n8n-nodes-base.dataTable': 1.1,
 	'n8n-nodes-base.executeWorkflow': 1.4,
 	'n8n-nodes-base.executeWorkflowTrigger': 1.3,
+	'n8n-nodes-base.httpRequest': 4.2,
 	'n8n-nodes-base.if': 2.3,
 	'n8n-nodes-base.manualTrigger': 1,
 	'n8n-nodes-base.n8n': 1,
@@ -119,9 +120,9 @@ describe('inlineCode', () => {
 });
 
 describe('built workflows', () => {
-	it('builds the four templates', () => {
+	it('builds the core templates and the command templates', () => {
 		expect(Object.keys(built).sort()).toEqual(
-			['command-template', 'reload-commands', 'router', 'sync'].sort(),
+			['command-template', 'commands/parse', 'reload-commands', 'router', 'sync'].sort(),
 		);
 		expect(TEMPLATE_NAMES.slice().sort()).toEqual(Object.keys(built).sort());
 	});
@@ -131,6 +132,7 @@ describe('built workflows', () => {
 		expect(built.sync.name).toBe('Discord Sync');
 		expect(built['command-template'].name).toBe('Discord Command: ping');
 		expect(built['reload-commands'].name).toBe('Discord Command: reload-commands');
+		expect(built['commands/parse'].name).toBe('Discord Command: parse');
 	});
 
 	it('built workflows contain no //@inline lines', () => {
@@ -276,6 +278,130 @@ describe('command workflows', () => {
 			input: [{ json: { registered: 3, skipped: [], guilds: ['g'] } }],
 		});
 		expect(out).toEqual([{ json: { content: 'Registered 3 commands.' } }]);
+	});
+});
+
+describe('parse command', () => {
+	const wf = built['commands/parse'];
+	const FENCE = '`'.repeat(3);
+	const NL = String.fromCharCode(10);
+	const attachmentInput = {
+		interaction: {
+			options: { logfile: '7' },
+			resolved: {
+				attachments: { 7: { url: 'https://cdn.example/Player.log', filename: 'Player.log', size: 42 } },
+			},
+		},
+	};
+	const triggerNodes = { 'When called by another workflow': [{ json: attachmentInput }] };
+
+	it('is a tagged discord-command with the recipe definition', () => {
+		expect(wf.tags.map((t) => t.name)).toEqual(['discord-command']);
+		const parsed = parseDefinition(node(wf, 'Command Definition').parameters.jsonOutput);
+		expect(parsed.ok).toBe(true);
+		expect(parsed.definition).toEqual({
+			name: 'parse',
+			description: 'Parse Log',
+			options: [{ type: 11, name: 'logfile', description: 'Unity Player.Log', required: true }],
+			ephemeral: false,
+			whitelist: { users: [], roles: [] },
+		});
+	});
+
+	it('wires command mode through attachment, download, parse and the mode switch', () => {
+		expect(targets(wf, 'Switch on mode', 0)).toEqual(['Attachment']);
+		expect(targets(wf, 'Attachment')).toEqual(['Has File']);
+		expect(targets(wf, 'Has File', 0)).toEqual(['Download']);
+		expect(targets(wf, 'Has File', 1)).toEqual(['Reply Error']);
+		expect(targets(wf, 'Download', 0)).toEqual(['Parse']);
+		expect(targets(wf, 'Download', 1)).toEqual(['Reply Download Error']);
+		expect(targets(wf, 'Parse')).toEqual(['Mode']);
+		expect(targets(wf, 'Mode', 0)).toEqual(['Reply']);
+		expect(targets(wf, 'Mode', 1)).toEqual(['Reply File']);
+	});
+
+	it('downloads the attachment as text without authentication and continues on error', () => {
+		const d = node(wf, 'Download');
+		expect(d.parameters).toMatchObject({
+			method: 'GET',
+			url: '={{ $json.url }}',
+			authentication: 'none',
+		});
+		expect(d.parameters.options.response.response).toEqual({
+			responseFormat: 'text',
+			outputPropertyName: 'log',
+		});
+		expect(d.onError).toBe('continueErrorOutput');
+		expect(JSON.parse(node(wf, 'Reply Download Error').parameters.jsonOutput)).toEqual({
+			content: 'Could not load the log file attachment.',
+		});
+	});
+
+	it('has no Discord nodes', () => {
+		expect(wf.nodes.filter((n) => n.type.startsWith('CUSTOM.'))).toEqual([]);
+	});
+
+	it('Attachment reads the url from interaction.resolved', () => {
+		expect(runCode(wf, 'Attachment', { nodes: triggerNodes })).toEqual([
+			{ json: { url: 'https://cdn.example/Player.log', filename: 'Player.log', size: 42 } },
+		]);
+	});
+
+	it('Attachment reports a missing attachment', () => {
+		const out = runCode(wf, 'Attachment', {
+			nodes: {
+				'When called by another workflow': [
+					{ json: { interaction: { options: { logfile: '7' }, resolved: {} } } },
+				],
+			},
+		});
+		expect(out).toEqual([{ json: { error: 'Could not load the log file attachment.' } }]);
+	});
+
+	it('Parse builds embeds for a small log', () => {
+		const log = ['XException: bad', '  at A.B () in x:0', 'next'].join(NL);
+		const [item] = runCode(wf, 'Parse', {
+			nodes: { Attachment: [{ json: { url: 'u', filename: 'Player.log', size: 42 } }] },
+			input: [{ json: { log } }],
+		});
+		expect(item.json).toEqual({
+			mode: 'embeds',
+			content: "Loaded log file 'Player.log' (42 bytes). Exceptions Count:1",
+			embeds: [
+				{ title: 'XException: bad', color: 10038562, description: FENCE + '  at A.B () in x:0' + FENCE },
+			],
+		});
+		expect(item.binary).toBeUndefined();
+	});
+
+	it('Parse attaches exceptions.log as base64 text for a big log', () => {
+		const log = Array.from({ length: 25 }, (_, i) => 'XException: e' + i + NL + '  at A.B () in x:' + i).join(NL);
+		const [item] = runCode(wf, 'Parse', {
+			nodes: { Attachment: [{ json: { url: 'u', filename: 'Player.log', size: log.length } }] },
+			input: [{ json: { log } }],
+		});
+		expect(item.json).toEqual({ mode: 'file', content: 'There are 25 exceptions in the log.' });
+		expect(item.binary.file).toMatchObject({ mimeType: 'text/plain', fileName: 'exceptions.log' });
+		const text = Buffer.from(item.binary.file.data, 'base64').toString('utf8');
+		expect(text.startsWith(['XException: e0', '  at A.B () in x:0', '', '', 'XException: e1'].join(NL))).toBe(true);
+		expect(text.split('XException').length - 1).toBe(25);
+	});
+
+	it('Parse does not crash when the download produced no text', () => {
+		const [item] = runCode(wf, 'Parse', {
+			nodes: { Attachment: [{ json: { url: 'u', filename: 'a.png', size: 1 } }] },
+			input: [{ json: {} }],
+		});
+		expect(item.json.embeds).toEqual([]);
+	});
+
+	it('Reply File keeps the binary file and passes only the content', () => {
+		const binary = { file: { data: 'QQ==', mimeType: 'text/plain', fileName: 'exceptions.log' } };
+		const [item] = runCode(wf, 'Reply File', {
+			input: [{ json: { mode: 'file', content: 'c' }, binary }],
+		});
+		expect(item.json).toEqual({ content: 'c' });
+		expect(item.binary).toEqual(binary);
 	});
 });
 
@@ -667,9 +793,13 @@ describe('writeAll', () => {
 	it('writes one importable JSON file per template', () => {
 		const out = fs.mkdtempSync(path.join(os.tmpdir(), 'bot-dist-'));
 		const files = writeAll(BOT_DIR, out);
-		expect(files.map((f) => path.basename(f)).sort()).toEqual(
-			['command-template.json', 'reload-commands.json', 'router.json', 'sync.json'],
-		);
+		expect(files.map((f) => path.relative(out, f).split(path.sep).join('/')).sort()).toEqual([
+			'command-template.json',
+			'commands/parse.json',
+			'reload-commands.json',
+			'router.json',
+			'sync.json',
+		]);
 		for (const f of files) {
 			const wf = JSON.parse(fs.readFileSync(f, 'utf8'));
 			expect(wf).toHaveProperty('nodes');
