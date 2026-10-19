@@ -243,7 +243,7 @@
 			"type": "n8n-nodes-base.executeWorkflow",
 			"typeVersion": 1.4,
 			"position": [
-				1320,
+				1540,
 				100
 			],
 			"parameters": {
@@ -286,13 +286,62 @@
 			"type": "n8n-nodes-base.code",
 			"typeVersion": 2,
 			"position": [
-				1540,
+				1760,
 				100
 			],
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/clickup.js\nconst result = $input.first().json;\nreturn [{ json: result.found && result.embed ? { embeds: [result.embed] } : { content: NOT_FETCHED } }];"
+				"jsCode": "//@inline lib/clickup.js\nconst result = $input.all()[0]?.json;\nreturn [{ json: result?.found && result.embed ? { embeds: [result.embed] } : { content: NOT_FETCHED } }];"
+			}
+		},
+		{
+			"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e0f0a",
+			"name": "Is Configured",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1320,
+				100
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e0f1a",
+							"leftValue": "={{ $json.value || '' }}",
+							"rightValue": "",
+							"operator": {
+								"type": "string",
+								"operation": "notEmpty",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e0f0b",
+			"name": "Reply Not Configured",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				1540,
+				300
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify({ content: \"ClickUp lookup isn't configured (discord_config row clickupHelperWorkflowId is missing).\" }) }}",
+				"options": {}
 			}
 		}
 	],
@@ -363,7 +412,7 @@
 			"main": [
 				[
 					{
-						"node": "Get Task",
+						"node": "Is Configured",
 						"type": "main",
 						"index": 0
 					}
@@ -375,6 +424,24 @@
 				[
 					{
 						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Is Configured": {
+			"main": [
+				[
+					{
+						"node": "Get Task",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply Not Configured",
 						"type": "main",
 						"index": 0
 					}

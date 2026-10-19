@@ -98,7 +98,10 @@ const ALLOWED_TYPES = {
 const TOKEN_RE = /[A-Za-z0-9_-]{24}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}/;
 
 describe('inlineCode', () => {
-	const files = { 'lib/a.js': 'function a() {}\r\nif (typeof module !== \'undefined\') module.exports = { a };\r\n', 'lib/b.js': 'function b() {}' };
+	const files = {
+		'lib/a.js': "function a() {}\r\nif (typeof module !== 'undefined') module.exports = { a };\r\n",
+		'lib/b.js': 'function b() {}',
+	};
 	const read = (p) => {
 		if (!(p in files)) throw new Error('missing ' + p);
 		return files[p];
@@ -235,7 +238,14 @@ describe('built workflows', () => {
 			for (const n of wf.nodes) {
 				for (const cred of Object.values(n.credentials || {})) {
 					expect(cred, n.name).not.toHaveProperty('id');
-					expect(['Discord Bot (live)', 'n8n API', 'ClickUp (Client)'], n.name).toContain(cred.name);
+					expect(
+						[
+							'Discord Bot (live)',
+							'n8n API',
+							...parseCredentialList(process.env.CLICKUP_CREDENTIALS),
+						],
+						n.name,
+					).toContain(cred.name);
 				}
 			}
 		}
@@ -244,7 +254,9 @@ describe('built workflows', () => {
 	it('every Discord node uses the Discord Bot (live) credential', () => {
 		for (const wf of Object.values(built)) {
 			for (const n of wf.nodes.filter((x) => x.type.startsWith('CUSTOM.'))) {
-				expect(n.credentials, n.name).toEqual({ discordGatewayBotApi: { name: 'Discord Bot (live)' } });
+				expect(n.credentials, n.name).toEqual({
+					discordGatewayBotApi: { name: 'Discord Bot (live)' },
+				});
 			}
 		}
 	});
@@ -272,7 +284,12 @@ describe('command workflows', () => {
 	it('command-template switches on all four modes', () => {
 		const wf = built['command-template'];
 		const rules = node(wf, 'Switch on mode').parameters.rules.values;
-		expect(rules.map((r) => r.outputKey)).toEqual(['command', 'autocomplete', 'component', 'modal']);
+		expect(rules.map((r) => r.outputKey)).toEqual([
+			'command',
+			'autocomplete',
+			'component',
+			'modal',
+		]);
 		expect(targets(wf, 'Switch on mode', 0)).toEqual(['Reply']);
 	});
 
@@ -292,7 +309,9 @@ describe('command workflows', () => {
 
 	it('sub-workflow triggers accept all data', () => {
 		for (const name of ['command-template', 'reload-commands', 'sync']) {
-			expect(node(built[name], 'When called by another workflow').parameters.inputSource).toBe('passthrough');
+			expect(node(built[name], 'When called by another workflow').parameters.inputSource).toBe(
+				'passthrough',
+			);
 		}
 	});
 
@@ -312,7 +331,9 @@ describe('parse command', () => {
 		interaction: {
 			options: { logfile: '7' },
 			resolved: {
-				attachments: { 7: { url: 'https://cdn.example/Player.log', filename: 'Player.log', size: 42 } },
+				attachments: {
+					7: { url: 'https://cdn.example/Player.log', filename: 'Player.log', size: 42 },
+				},
 			},
 		},
 	};
@@ -411,14 +432,21 @@ describe('parse command', () => {
 			mode: 'embeds',
 			content: "Loaded log file 'Player.log' (42 bytes). Exceptions Count:1",
 			embeds: [
-				{ title: 'XException: bad', color: 10038562, description: FENCE + '  at A.B () in x:0' + FENCE },
+				{
+					title: 'XException: bad',
+					color: 10038562,
+					description: FENCE + '  at A.B () in x:0' + FENCE,
+				},
 			],
 		});
 		expect(item.binary).toBeUndefined();
 	});
 
 	it('Parse attaches exceptions.log as base64 text for a big log', () => {
-		const log = Array.from({ length: 25 }, (_, i) => 'XException: e' + i + NL + '  at A.B () in x:' + i).join(NL);
+		const log = Array.from(
+			{ length: 25 },
+			(_, i) => 'XException: e' + i + NL + '  at A.B () in x:' + i,
+		).join(NL);
 		const [item] = runCode(wf, 'Parse', {
 			nodes: { Attachment: [{ json: { url: 'u', filename: 'Player.log', size: log.length } }] },
 			input: [{ json: { log } }],
@@ -426,7 +454,9 @@ describe('parse command', () => {
 		expect(item.json).toEqual({ mode: 'file', content: 'There are 25 exceptions in the log.' });
 		expect(item.binary.file).toMatchObject({ mimeType: 'text/plain', fileName: 'exceptions.log' });
 		const text = Buffer.from(item.binary.file.data, 'base64').toString('utf8');
-		expect(text.startsWith(['XException: e0', '  at A.B () in x:0', '', '', 'XException: e1'].join(NL))).toBe(true);
+		expect(
+			text.startsWith(['XException: e0', '  at A.B () in x:0', '', '', 'XException: e1'].join(NL)),
+		).toBe(true);
 		expect(text.split('XException').length - 1).toBe(25);
 	});
 
@@ -551,7 +581,9 @@ describe('router', () => {
 		}
 		const rules = node(wf, 'Edit Failed').parameters.rules.values;
 		expect(rules.map((r) => r.outputKey)).toEqual(['deferCommand', 'deferUpdate']);
-		expect(rules[0].conditions.conditions[0].leftValue).toBe("={{ $('Decide').first().json.route }}");
+		expect(rules[0].conditions.conditions[0].leftValue).toBe(
+			"={{ $('Decide').first().json.route }}",
+		);
 		expect(targets(wf, 'Edit Failed', 0)).toEqual(['Command Error']);
 		expect(targets(wf, 'Edit Failed', 1)).toEqual(['Update Error']);
 		for (const name of ['Command Error', 'Update Error']) {
@@ -567,9 +599,17 @@ describe('router', () => {
 		};
 		for (const [name, text] of Object.entries(copy)) {
 			const p = node(wf, name).parameters;
-			expect(p).toMatchObject({ operation: 'createInitialCallback', responseType: 4, content: text, flags: 64 });
+			expect(p).toMatchObject({
+				operation: 'createInitialCallback',
+				responseType: 4,
+				content: text,
+				flags: 64,
+			});
 		}
-		expect(node(wf, 'Refuse Autocomplete').parameters).toMatchObject({ responseType: 8, choices: '[]' });
+		expect(node(wf, 'Refuse Autocomplete').parameters).toMatchObject({
+			responseType: 8,
+			choices: '[]',
+		});
 	});
 
 	it('every interaction response node takes its id and token from Classify', () => {
@@ -601,16 +641,31 @@ describe('router', () => {
 	};
 
 	it('Classify and Decide route an owner /ping to deferCommand', () => {
-		const classified = runCode(wf, 'Classify', { input: [{ json: { event: 'INTERACTION_CREATE', data: raw } }] });
-		expect(classified.json).toMatchObject({ kind: 'command', commandName: 'ping', userId: 'owner' });
+		const classified = runCode(wf, 'Classify', {
+			input: [{ json: { event: 'INTERACTION_CREATE', data: raw } }],
+		});
+		expect(classified.json).toMatchObject({
+			kind: 'command',
+			commandName: 'ping',
+			userId: 'owner',
+		});
 		const out = runCode(wf, 'Decide', {
 			nodes: {
 				Classify: [classified],
 				'Lookup Command': [
-					{ json: { name: 'ping', workflowId: 'wfPing', definition: '{"name":"ping","description":"P"}' } },
+					{
+						json: {
+							name: 'ping',
+							workflowId: 'wfPing',
+							definition: '{"name":"ping","description":"P"}',
+						},
+					},
 				],
 			},
-			input: [{ json: { key: 'ownerId', value: 'owner' } }, { json: { key: 'syncWorkflowId', value: 'wfSync' } }],
+			input: [
+				{ json: { key: 'ownerId', value: 'owner' } },
+				{ json: { key: 'syncWorkflowId', value: 'wfSync' } },
+			],
 		});
 		expect(out).toHaveLength(1);
 		expect(out[0].json).toMatchObject({
@@ -637,7 +692,15 @@ describe('router', () => {
 		const out = runCode(wf, 'Decide', {
 			nodes: {
 				Classify: [classified],
-				'Lookup Command': [{ json: { name: 'other', workflowId: 'wfX', definition: '{"name":"other","description":"O"}' } }],
+				'Lookup Command': [
+					{
+						json: {
+							name: 'other',
+							workflowId: 'wfX',
+							definition: '{"name":"other","description":"O"}',
+						},
+					},
+				],
 			},
 			input: [{ json: { key: 'ownerId', value: 'owner' } }],
 		});
@@ -649,7 +712,11 @@ describe('router', () => {
 		expect(n.parameters.filters.conditions).toEqual([
 			{ keyName: 'name', condition: 'eq', keyValue: "={{ $json.commandName || '' }}" },
 		]);
-		expect(n.parameters.dataTableId).toEqual({ __rl: true, mode: 'name', value: 'discord_commands' });
+		expect(n.parameters.dataTableId).toEqual({
+			__rl: true,
+			mode: 'name',
+			value: 'discord_commands',
+		});
 		expect(n.parameters.limit).toBe(1);
 		expect(n.alwaysOutputData).toBe(true);
 	});
@@ -669,7 +736,10 @@ describe('router', () => {
 
 	it('Workflow Input passes mode and interaction', () => {
 		const classified = { kind: 'component', commandName: 'x' };
-		const out = runCode(wf, 'Workflow Input', { nodes: { Decide: [{ json: { classified } }] }, input: [{ json: {} }] });
+		const out = runCode(wf, 'Workflow Input', {
+			nodes: { Decide: [{ json: { classified } }] },
+			input: [{ json: {} }],
+		});
 		expect(out).toEqual([{ json: { mode: 'component', interaction: classified } }]);
 	});
 
@@ -687,7 +757,10 @@ describe('router', () => {
 		);
 		expect(out[0].json.message.content).toBe('got it');
 		expect(out[0].binary).toEqual({ file });
-		const followups = runCode(wf, 'Send Followups', { nodes: { Format: out }, input: [{ json: {} }] });
+		const followups = runCode(wf, 'Send Followups', {
+			nodes: { Format: out },
+			input: [{ json: {} }],
+		});
 		expect(followups).toEqual([{ json: { content: 'one', embeds: [], components: [], flags: 0 } }]);
 	});
 
@@ -712,12 +785,18 @@ describe('router', () => {
 		expect(inputs).toEqual([
 			{ json: { event: 'create', message, listener: { name: 'Echo', workflowId: 'wfL' } } },
 		]);
-		expect(node(wf, 'Run Listener').parameters.workflowId.value).toBe('={{ $json.listener.workflowId }}');
+		expect(node(wf, 'Run Listener').parameters.workflowId.value).toBe(
+			'={{ $json.listener.workflowId }}',
+		);
 	});
 
 	it('Filter Message drops the bot own message', () => {
 		const out = runCode(wf, 'Filter Message', {
-			nodes: { 'Route Event': [{ json: { event: 'MESSAGE_CREATE', data: { id: 'm', author: { id: 'bot' } } } }] },
+			nodes: {
+				'Route Event': [
+					{ json: { event: 'MESSAGE_CREATE', data: { id: 'm', author: { id: 'bot' } } } },
+				],
+			},
 			input: [{ json: { key: 'botUserId', value: 'bot' } }],
 		});
 		expect(out).toEqual([]);
@@ -756,7 +835,11 @@ describe('sync', () => {
 
 	it('reads tagged workflows through the n8n API credential', () => {
 		const n = node(wf, 'Get Workflows');
-		expect(n.parameters).toMatchObject({ resource: 'workflow', operation: 'getAll', returnAll: true });
+		expect(n.parameters).toMatchObject({
+			resource: 'workflow',
+			operation: 'getAll',
+			returnAll: true,
+		});
 		expect(n.parameters.filters.tags).toBe('discord-command');
 		expect(n.credentials).toEqual({ n8nApi: { name: 'n8n API' } });
 		expect(n.alwaysOutputData).toBe(true);
@@ -771,10 +854,20 @@ describe('sync', () => {
 	});
 
 	it('Build, Guilds and Report work on API-shaped data', () => {
-		const def = { name: 'Command Definition', parameters: { jsonOutput: '{"name":"ping","description":"P"}' } };
+		const def = {
+			name: 'Command Definition',
+			parameters: { jsonOutput: '{"name":"ping","description":"P"}' },
+		};
 		const builtOut = runCode(wf, 'Build', {
 			input: [
-				{ json: { id: 'w1', name: 'Discord Command: ping', active: true, activeVersion: { nodes: [def] } } },
+				{
+					json: {
+						id: 'w1',
+						name: 'Discord Command: ping',
+						active: true,
+						activeVersion: { nodes: [def] },
+					},
+				},
 				{ json: { id: 'w2', name: 'Discord Command: draft', active: true, nodes: [def] } },
 			],
 		});
@@ -800,19 +893,42 @@ describe('sync', () => {
 		]);
 		const rows = runCode(wf, 'Table Rows', { nodes: { Build: builtOut }, input: [{ json: {} }] });
 		expect(rows).toEqual([{ json: builtOut[0].json.table[0] }]);
-		const report = runCode(wf, 'Report', { nodes: { Build: builtOut, Guilds: guilds }, input: [{ json: {} }] });
+		const report = runCode(wf, 'Report', {
+			nodes: { Build: builtOut, Guilds: guilds },
+			input: [{ json: {} }],
+		});
 		expect(report).toEqual([
-			{ json: { registered: 1, skipped: ['Discord Command: draft: no published version'], guilds: ['g1', 'g2'] } },
+			{
+				json: {
+					registered: 1,
+					skipped: ['Discord Command: draft: no published version'],
+					guilds: ['g1', 'g2'],
+				},
+			},
 		]);
 	});
 
 	it('Build reports invalid definitions in the abort message', () => {
-		const bad = { name: 'Command Definition', parameters: { jsonOutput: '{"name":"Bad","description":"P"}' } };
+		const bad = {
+			name: 'Command Definition',
+			parameters: { jsonOutput: '{"name":"Bad","description":"P"}' },
+		};
 		const out = runCode(wf, 'Build', {
-			input: [{ json: { id: 'w1', name: 'Discord Command: bad', active: true, activeVersion: { nodes: [bad] } } }],
+			input: [
+				{
+					json: {
+						id: 'w1',
+						name: 'Discord Command: bad',
+						active: true,
+						activeVersion: { nodes: [bad] },
+					},
+				},
+			],
 		});
 		expect(out[0].json.errors.length).toBeGreaterThan(0);
-		expect(out[0].json.abortMessage.startsWith('Sync aborted:\nDiscord Command: bad: name')).toBe(true);
+		expect(out[0].json.abortMessage.startsWith('Sync aborted:\nDiscord Command: bad: name')).toBe(
+			true,
+		);
 		expect(node(wf, 'Stop and Error').parameters.errorMessage).toBe('={{ $json.abortMessage }}');
 	});
 
@@ -825,7 +941,11 @@ describe('sync', () => {
 	it('Guilds fails loudly without a guildIds row', () => {
 		expect(() =>
 			runCode(wf, 'Guilds', {
-				nodes: { Build: [{ json: { commands: [] } }], 'Load Config': [{ json: {} }], 'Get Application': [{ json: { id: 'a' } }] },
+				nodes: {
+					Build: [{ json: { commands: [] } }],
+					'Load Config': [{ json: {} }],
+					'Get Application': [{ json: { id: 'a' } }],
+				},
 				input: [{ json: {} }],
 			}),
 		).toThrow('guildIds');
@@ -1041,12 +1161,15 @@ describe('cl command', () => {
 		});
 	});
 
-	it('wires command -> Extract ID -> Has ID -> Load Helper Id -> Get Task -> Reply', () => {
+	it('wires command -> Extract ID -> Has ID -> Load Helper Id -> Is Configured -> Get Task -> Reply', () => {
 		expect(targets(wf, 'Switch on mode', 0)).toEqual(['Extract ID']);
 		expect(targets(wf, 'Extract ID')).toEqual(['Has ID']);
 		expect(targets(wf, 'Has ID', 0)).toEqual(['Load Helper Id']);
 		expect(targets(wf, 'Has ID', 1)).toEqual(['Reply Error']);
-		expect(targets(wf, 'Load Helper Id')).toEqual(['Get Task']);
+		expect(targets(wf, 'Load Helper Id')).toEqual(['Is Configured']);
+		expect(targets(wf, 'Is Configured', 0)).toEqual(['Get Task']);
+		expect(targets(wf, 'Is Configured', 1)).toEqual(['Reply Not Configured']);
+		expect(targets(wf, 'Reply Not Configured')).toEqual([]);
 		expect(targets(wf, 'Get Task')).toEqual(['Reply']);
 		expect(targets(wf, 'Reply')).toEqual([]);
 		expect(targets(wf, 'Reply Error')).toEqual([]);
@@ -1059,6 +1182,16 @@ describe('cl command', () => {
 		expect(n.parameters.filters.conditions).toEqual([
 			{ keyName: 'key', condition: 'eq', keyValue: 'clickupHelperWorkflowId' },
 		]);
+	});
+
+	it('replies clearly when the helper id row is missing or empty', () => {
+		const cond = node(wf, 'Is Configured').parameters.conditions.conditions[0];
+		expect(cond.leftValue).toBe("={{ $json.value || '' }}");
+		expect(cond.operator).toMatchObject({ type: 'string', operation: 'notEmpty' });
+		const expr = node(wf, 'Reply Not Configured').parameters.jsonOutput;
+		expect(expr).toContain(
+			"ClickUp lookup isn't configured (discord_config row clickupHelperWorkflowId is missing).",
+		);
 	});
 
 	it('Get Task calls the helper by the configured id, waits, and passes taskId', () => {
@@ -1107,6 +1240,9 @@ describe('cl command', () => {
 			{ json: { embeds: [embed] } },
 		]);
 		expect(runCode(wf, 'Reply', { input: [{ json: { found: false } }] })).toEqual([
+			{ json: { content: 'Could not fetch ClickUp task.' } },
+		]);
+		expect(runCode(wf, 'Reply', { input: [] })).toEqual([
 			{ json: { content: 'Could not fetch ClickUp task.' } },
 		]);
 		expect(runCode(wf, 'Reply', { input: [{ json: { key: 'x', value: '' } }] })).toEqual([
