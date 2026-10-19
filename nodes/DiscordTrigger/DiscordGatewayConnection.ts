@@ -422,7 +422,9 @@ export class DiscordGatewayConnection {
 					);
 				}
 				const code = (error as { code?: unknown } | null)?.code;
-				const reason = error instanceof Error ? error.message : String(error);
+				const raw = error instanceof Error ? error.message : String(error);
+				const { token } = this.settings;
+				const reason = token ? raw.split(token).join('[redacted]') : raw;
 				throw new ApplicationError(`Discord REST request failed: ${reason}`, {
 					extra: { status, code: typeof code === 'string' ? code : undefined },
 				});

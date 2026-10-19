@@ -133,4 +133,20 @@ describe('bot token never leaves the REST boundary', () => {
 		expect((error as FatalGatewayError).closeCode).toBe(4004);
 		expect(dump(error)).not.toContain(TOKEN);
 	});
+
+	it('redacts the token when the error message itself contains it', async () => {
+		const fake = createFakeTrigger({ gatewayUrl: url, token: TOKEN });
+		fake.helpers.httpRequest = async () => {
+			throw new Error(`connect failed for Bot ${TOKEN}`);
+		};
+		const connection = new DiscordGatewayConnection(fake, gatewaySettings(fake), () => {});
+		const error = await (connection as unknown as { getGatewayUrl(): Promise<string> })
+			.getGatewayUrl()
+			.then(
+				() => undefined,
+				(e: unknown) => e as Error,
+			);
+		expect(error?.message).toContain('[redacted]');
+		expect(dump(error)).not.toContain(TOKEN);
+	});
 });

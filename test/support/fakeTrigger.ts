@@ -57,7 +57,7 @@ function networkError(code: string, request: FakeRequest): Error {
 		isAxiosError: true,
 		code,
 		config: { method: request.method, url: request.url, headers: { ...request.headers } },
-		request: { _header: `GET /api/v10/gateway/bot
+		request: { _header: `GET /api/v10/gateway/bot
 Authorization: ${request.headers?.Authorization}` },
 	});
 }
