@@ -87,6 +87,9 @@ describe('command templates', () => {
 	it('are imported and published before the router', () => {
 		expect(ORDER).toContain('commands/parse');
 		expect(PUBLISH.has('commands/parse')).toBe(true);
+		expect(ORDER).toContain('commands/preview');
+		expect(PUBLISH.has('commands/preview')).toBe(true);
+		expect(ORDER.indexOf('commands/preview')).toBeLessThan(ORDER.indexOf('router'));
 		expect(ORDER.indexOf('commands/parse')).toBeLessThan(ORDER.indexOf('router'));
 	});
 
@@ -151,7 +154,7 @@ describe('importDev skip', () => {
 	it('rejects an unknown key and lists the valid ones, before any request', async () => {
 		const calls = stubApi();
 		await expect(run(['routr'])).rejects.toThrow(
-			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, commands/parse, router',
+			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, commands/parse, commands/preview, router',
 		);
 		expect(calls).toEqual([]);
 	});

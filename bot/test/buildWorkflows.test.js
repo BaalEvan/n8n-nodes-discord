@@ -122,7 +122,7 @@ describe('inlineCode', () => {
 describe('built workflows', () => {
 	it('builds the core templates and the command templates', () => {
 		expect(Object.keys(built).sort()).toEqual(
-			['command-template', 'commands/parse', 'reload-commands', 'router', 'sync'].sort(),
+			['command-template', 'commands/parse', 'commands/preview', 'reload-commands', 'router', 'sync'].sort(),
 		);
 		expect(TEMPLATE_NAMES.slice().sort()).toEqual(Object.keys(built).sort());
 	});
@@ -133,6 +133,7 @@ describe('built workflows', () => {
 		expect(built['command-template'].name).toBe('Discord Command: ping');
 		expect(built['reload-commands'].name).toBe('Discord Command: reload-commands');
 		expect(built['commands/parse'].name).toBe('Discord Command: parse');
+		expect(built['commands/preview'].name).toBe('Discord Command: preview');
 	});
 
 	it('built workflows contain no //@inline lines', () => {
@@ -809,6 +810,67 @@ describe('sync', () => {
 	});
 });
 
+describe('preview command', () => {
+	const wf = built['commands/preview'];
+	const run = (url) =>
+		runCode(wf, 'Rewrite', {
+			nodes: {
+				'When called by another workflow': [
+					{ json: { mode: 'command', interaction: { options: { url } } } },
+				],
+			},
+		});
+
+	it('is a tagged discord-command with the recipe definition', () => {
+		expect(wf.tags.map((t) => t.name)).toEqual(['discord-command']);
+		const parsed = parseDefinition(node(wf, 'Command Definition').parameters.jsonOutput);
+		expect(parsed.ok).toBe(true);
+		expect(parsed.definition).toEqual({
+			name: 'preview',
+			description: 'Replaces url with variant supporting discord embeds',
+			options: [
+				{
+					type: 3,
+					name: 'url',
+					description: 'The URL to convert for Discord embed support',
+					required: true,
+				},
+			],
+			ephemeral: false,
+			whitelist: { users: [], roles: [] },
+		});
+	});
+
+	it('wires command mode to Rewrite, which is the end of the branch', () => {
+		expect(targets(wf, 'Switch on mode', 0)).toEqual(['Rewrite']);
+		expect(targets(wf, 'Rewrite')).toEqual([]);
+	});
+
+	it('has no Discord nodes and no unresolved inline marker', () => {
+		expect(wf.nodes.filter((n) => n.type.startsWith('CUSTOM.'))).toEqual([]);
+		expect(node(wf, 'Rewrite').parameters.jsCode).not.toContain('//@inline');
+	});
+
+	it('Rewrite returns the result shape for each recipe case', () => {
+		expect(run('https://x.com/user/status/1')).toEqual([
+			{ json: { content: 'https://fxtwitter.com/user/status/1' } },
+		]);
+		expect(run('https://www.instagram.com/p/abc/')).toEqual([
+			{ json: { content: 'https://vxinstagram.com/p/abc/' } },
+		]);
+		expect(run('look at this https://twitter.com/a/status/2 lol')).toEqual([
+			{ json: { content: 'https://fxtwitter.com/a/status/2' } },
+		]);
+		expect(run('https://netflix.com/x')).toEqual([
+			{ json: { content: 'No supported domain found in the URL.' } },
+		]);
+		expect(run('not a url')).toEqual([
+			{ json: { content: 'No supported domain found in the URL.' } },
+		]);
+		expect(run('')).toEqual([{ json: { content: 'Please provide a URL.' } }]);
+	});
+});
+
 describe('writeAll', () => {
 	it('writes one importable JSON file per template', () => {
 		const out = fs.mkdtempSync(path.join(os.tmpdir(), 'bot-dist-'));
@@ -816,6 +878,7 @@ describe('writeAll', () => {
 		expect(files.map((f) => path.relative(out, f).split(path.sep).join('/')).sort()).toEqual([
 			'command-template.json',
 			'commands/parse.json',
+			'commands/preview.json',
 			'reload-commands.json',
 			'router.json',
 			'sync.json',

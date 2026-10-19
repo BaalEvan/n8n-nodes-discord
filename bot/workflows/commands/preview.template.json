@@ -1,0 +1,205 @@
+{
+	"name": "Discord Command: preview",
+	"nodes": [
+		{
+			"id": "7f0b1c4e-2a53-4d8e-9b6a-3c1d5e7a9f01",
+			"name": "When called by another workflow",
+			"type": "n8n-nodes-base.executeWorkflowTrigger",
+			"typeVersion": 1.3,
+			"position": [
+				0,
+				300
+			],
+			"parameters": {
+				"inputSource": "passthrough"
+			}
+		},
+		{
+			"id": "8a1c2d5f-3b64-4e9f-8c7b-4d2e6f8b0a12",
+			"name": "Command Definition",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				220,
+				300
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "{\n  \"name\": \"preview\",\n  \"description\": \"Replaces url with variant supporting discord embeds\",\n  \"options\": [\n    {\n      \"type\": 3,\n      \"name\": \"url\",\n      \"description\": \"The URL to convert for Discord embed support\",\n      \"required\": true\n    }\n  ],\n  \"ephemeral\": false,\n  \"whitelist\": {\n    \"users\": [],\n    \"roles\": []\n  }\n}",
+				"options": {}
+			}
+		},
+		{
+			"id": "9b2d3e60-4c75-4fa0-9d8c-5e3f709c1b23",
+			"name": "Switch on mode",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				440,
+				300
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "a03e4f71-5d86-4ab1-8e9d-6f40810d2c30",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "command",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "command"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "a13e4f71-5d86-4ab1-8e9d-6f40810d2c31",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "autocomplete",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "autocomplete"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "a23e4f71-5d86-4ab1-8e9d-6f40810d2c32",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "component",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "component"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "a33e4f71-5d86-4ab1-8e9d-6f40810d2c33",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "modal",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "modal"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "b4f50a82-6e97-4bc2-9fae-7051921e3d44",
+			"name": "Rewrite",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				880,
+				200
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/preview.js\nreturn [{ json: { content: previewLink($('When called by another workflow').first().json.interaction.options.url) } }];"
+			}
+		}
+	],
+	"connections": {
+		"When called by another workflow": {
+			"main": [
+				[
+					{
+						"node": "Command Definition",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Command Definition": {
+			"main": [
+				[
+					{
+						"node": "Switch on mode",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Switch on mode": {
+			"main": [
+				[
+					{
+						"node": "Rewrite",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"tags": [
+		{
+			"name": "discord-command"
+		}
+	]
+}
