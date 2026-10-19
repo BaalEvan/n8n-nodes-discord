@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 const { loadModule } = require('./load.js');
-const { formatResult, commandErrorText, isErrorResult, workflowInput } = loadModule('format', ['result']);
+const { formatResult, commandErrorText, isErrorResult } = loadModule('format', ['result']);
 
 const command = (o = {}) => ({ route: 'deferCommand', ephemeral: false, classified: { commandName: 'ping' }, ...o });
 const update = (o = {}) => command({ route: 'deferUpdate', ...o });
@@ -62,12 +62,5 @@ describe('formatResult for deferUpdate', () => {
 	});
 	it('a sub-workflow error gives updateError, so the clicked message is not overwritten', () => {
 		expect(formatResult({ error: 'boom' }, false, update()).action).toBe('updateError');
-	});
-});
-
-describe('workflowInput', () => {
-	it('passes the kind as mode and the classified interaction', () => {
-		const classified = { kind: 'modal', commandName: 'x' };
-		expect(workflowInput(classified)).toEqual({ mode: 'modal', interaction: classified });
 	});
 });

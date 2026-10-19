@@ -63,7 +63,7 @@
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/definition.js lib/syncPayload.js lib/syncApi.js\nconst input = toSyncWorkflows(\n\t$input.all().map(function (i) {\n\t\treturn i.json;\n\t}),\n);\nconst built = buildCommandList(input.workflows);\nbuilt.skipped = input.skipped.concat(built.skipped);\nbuilt.abortMessage = syncAbortMessage(built.errors);\nreturn [{ json: built }];"
+				"jsCode": "//@inline lib/definition.js lib/syncPayload.js lib/syncApi.js\nconst input = toSyncWorkflows(\n\t$input.all().map(function (i) {\n\t\treturn i.json;\n\t}),\n);\nconst built = buildCommandList(input.workflows);\nbuilt.skipped = input.skipped.concat(built.skipped);\nbuilt.errors = input.errors.concat(built.errors);\nbuilt.abortMessage = syncAbortMessage(built.errors);\nreturn [{ json: built }];"
 			}
 		},
 		{
@@ -220,7 +220,8 @@
 					"value": "discord_commands"
 				}
 			},
-			"executeOnce": true
+			"executeOnce": true,
+			"alwaysOutputData": true
 		},
 		{
 			"id": "e799dc3e-73d5-44fa-af26-b07f277719e5",

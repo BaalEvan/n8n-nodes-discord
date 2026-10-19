@@ -28,7 +28,8 @@
 				"discordGatewayBotApi": {
 					"name": "Discord Bot (live)"
 				}
-			}
+			},
+			"notes": "Before publishing, replace __OWNER_ID__ in Alert User ID with the value of the discord_config row ownerId. Trigger parameters are read once at activation and cannot read Data Tables. Republish (deactivate, activate) after changing any trigger parameter."
 		},
 		{
 			"id": "ea22aad3-63a6-4d22-a54c-d6084735c14d",
@@ -496,12 +497,46 @@
 			"alwaysOutputData": true
 		},
 		{
+			"id": "939d21ba-1a0f-489e-a2fe-1a3c433ff1d9",
+			"name": "Has Sync ID",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1780,
+				-100
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "c6fdf5eb-90a6-4e7c-ad13-5de42a02011e",
+							"leftValue": "={{ $('Decide').first().json.syncWorkflowId }}",
+							"rightValue": "",
+							"operator": {
+								"type": "string",
+								"operation": "notEmpty",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
 			"id": "6b798753-92e5-4d7c-aa4c-ea91839c07a8",
 			"name": "Run Sync",
 			"type": "n8n-nodes-base.executeWorkflow",
 			"typeVersion": 1.4,
 			"position": [
-				1780,
+				2000,
 				-100
 			],
 			"parameters": {
@@ -637,7 +672,7 @@
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/format.js\nreturn [{ json: workflowInput($('Decide').first().json.classified) }];"
+				"jsCode": "//@inline lib/workflowInput.js\nreturn [{ json: workflowInput($('Decide').first().json.classified) }];"
 			}
 		},
 		{
@@ -684,7 +719,7 @@
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/result.js lib/format.js\nconst decision = $('Decide').first().json;\nconst item = $input.first();\nconst hasFile = Boolean(item.binary && item.binary.file);\nconst out = { json: Object.assign({ result: item.json }, formatResult(item.json, hasFile, decision)) };\nif (hasFile) out.binary = { file: item.binary.file };\nreturn [out];"
+				"jsCode": "//@inline lib/result.js lib/format.js\nconst decision = $('Decide').first().json;\nconst item = $input.first();\nconst hasFile = Boolean(item.binary && item.binary.file);\nconst errorText = commandErrorText((decision.classified && decision.classified.commandName) || '');\nconst plan = formatResult(item.json, hasFile, decision);\nconst out = { json: Object.assign({ result: item.json, errorText: errorText }, plan) };\nif (hasFile) out.binary = { file: item.binary.file };\nreturn [out];"
 			}
 		},
 		{
@@ -846,7 +881,8 @@
 				"discordGatewayBotApi": {
 					"name": "Discord Bot (live)"
 				}
-			}
+			},
+			"onError": "continueErrorOutput"
 		},
 		{
 			"id": "6369eb6d-3dc2-4da1-a158-db6e2bff24db",
@@ -876,6 +912,73 @@
 				"discordGatewayBotApi": {
 					"name": "Discord Bot (live)"
 				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "30a85998-007f-4202-a2dd-d5d4df0f94f7",
+			"name": "Edit Failed",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				2920,
+				650
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "f0d11ea8-02b9-4a57-ae8b-65770f0df4ad",
+										"leftValue": "={{ $('Decide').first().json.route }}",
+										"rightValue": "deferCommand",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "deferCommand"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "4b9c25ff-b216-4d20-ae8d-d2179326e1d7",
+										"leftValue": "={{ $('Decide').first().json.route }}",
+										"rightValue": "deferUpdate",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "deferUpdate"
+						}
+					]
+				},
+				"options": {}
 			}
 		},
 		{
@@ -922,7 +1025,7 @@
 			"type": "CUSTOM.discord",
 			"typeVersion": 1,
 			"position": [
-				2680,
+				3140,
 				700
 			],
 			"parameters": {
@@ -931,7 +1034,7 @@
 				"operation": "editOriginalResponse",
 				"applicationId": "={{ $('Classify').first().json.applicationId }}",
 				"interactionToken": "={{ $('Classify').first().json.token }}",
-				"content": "={{ $json.errorText }}"
+				"content": "={{ $('Format').first().json.errorText }}"
 			},
 			"credentials": {
 				"discordGatewayBotApi": {
@@ -945,7 +1048,7 @@
 			"type": "CUSTOM.discord",
 			"typeVersion": 1,
 			"position": [
-				2680,
+				3140,
 				850
 			],
 			"parameters": {
@@ -954,7 +1057,7 @@
 				"operation": "createFollowupMessage",
 				"applicationId": "={{ $('Classify').first().json.applicationId }}",
 				"interactionToken": "={{ $('Classify').first().json.token }}",
-				"content": "={{ $json.errorText }}",
+				"content": "={{ $('Format').first().json.errorText }}",
 				"flags": 64
 			},
 			"credentials": {
@@ -975,7 +1078,7 @@
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/format.js\nreturn [{ json: workflowInput($('Decide').first().json.classified) }];"
+				"jsCode": "//@inline lib/workflowInput.js\nreturn [{ json: workflowInput($('Decide').first().json.classified) }];"
 			}
 		},
 		{
@@ -1032,7 +1135,8 @@
 				"discordGatewayBotApi": {
 					"name": "Discord Bot (live)"
 				}
-			}
+			},
+			"executeOnce": true
 		},
 		{
 			"id": "74940894-64e0-4695-a716-0e02a5feff66",
@@ -1075,7 +1179,7 @@
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/listeners.js\nconst routed = $('Route Event').first().json;\nconst config = $input.first().json || {};\nconst filtered = filterMessage(routed.event, routed.data, String(config.value || ''));\nreturn filtered ? [{ json: filtered }] : [];"
+				"jsCode": "//@inline lib/listeners.js\nconst routed = $('Route Event').first(1).json;\nconst config = $input.first().json || {};\nconst filtered = filterMessage(routed.event, routed.data, String(config.value || ''));\nreturn filtered ? [{ json: filtered }] : [];"
 			}
 		},
 		{
@@ -1292,6 +1396,17 @@
 			"main": [
 				[
 					{
+						"node": "Has Sync ID",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Has Sync ID": {
+			"main": [
+				[
+					{
 						"node": "Run Sync",
 						"type": "main",
 						"index": 0
@@ -1401,6 +1516,13 @@
 						"type": "main",
 						"index": 0
 					}
+				],
+				[
+					{
+						"node": "Edit Failed",
+						"type": "main",
+						"index": 0
+					}
 				]
 			]
 		},
@@ -1409,6 +1531,31 @@
 				[
 					{
 						"node": "Send Followups",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Edit Failed",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Edit Failed": {
+			"main": [
+				[
+					{
+						"node": "Command Error",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Update Error",
 						"type": "main",
 						"index": 0
 					}

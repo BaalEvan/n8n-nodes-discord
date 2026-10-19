@@ -10,6 +10,7 @@ describe('toSyncWorkflows', () => {
 			{ id: 'w1', name: 'Discord Command: a', active: true, nodes: [], activeVersion: { nodes: [defNode] } },
 		]);
 		expect(r.skipped).toEqual([]);
+		expect(r.errors).toEqual([]);
 		expect(r.workflows).toEqual([{ id: 'w1', name: 'Discord Command: a', active: true, publishedNodes: [defNode] }]);
 	});
 	it('skips a workflow without activeVersion and reports it', () => {
@@ -19,10 +20,13 @@ describe('toSyncWorkflows', () => {
 	});
 	it('ignores an unpublished workflow silently', () => {
 		const r = toSyncWorkflows([{ id: 'w1', name: 'x', active: false, activeVersion: null }]);
-		expect(r).toEqual({ workflows: [], skipped: [] });
+		expect(r).toEqual({ workflows: [], skipped: [], errors: [] });
 	});
-	it('ignores empty items (Always Output Data with no workflows)', () => {
-		expect(toSyncWorkflows([{}, null])).toEqual({ workflows: [], skipped: [] });
+	it('reports an error when no workflow was found, so nothing is overwritten with []', () => {
+		const error = ['no discord-command workflows found'];
+		expect(toSyncWorkflows([{}, null])).toEqual({ workflows: [], skipped: [], errors: error });
+		expect(toSyncWorkflows([])).toEqual({ workflows: [], skipped: [], errors: error });
+		expect(toSyncWorkflows(undefined).errors).toEqual(error);
 	});
 	it('stringifies ids', () => {
 		expect(toSyncWorkflows([{ id: 7, name: 'x', activeVersion: { nodes: [] } }]).workflows[0].id).toBe('7');

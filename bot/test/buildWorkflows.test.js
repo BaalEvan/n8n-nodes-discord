@@ -43,6 +43,7 @@ const ROUTER_NODES = [
 	'Refuse',
 	'Refuse Autocomplete',
 	'Unknown Command',
+	'Has Sync ID',
 	'Run Sync',
 	'Unknown Component',
 	'Open Modal',
@@ -54,6 +55,7 @@ const ROUTER_NODES = [
 	'Edit Mode',
 	'Edit Original',
 	'Edit Original With File',
+	'Edit Failed',
 	'Send Followups',
 	'Create Followup Message',
 	'Command Error',
@@ -291,6 +293,9 @@ describe('router', () => {
 			alertUserId: '__OWNER_ID__',
 			alertAfterMinutes: 10,
 		});
+		expect(t.notes).toContain('__OWNER_ID__');
+		expect(t.notes).toContain('discord_config');
+		expect(t.notes).toContain('ownerId');
 	});
 
 	it('Route Event sends interactions to Classify and messages to Load Bot Config, with no fallback', () => {
@@ -361,7 +366,28 @@ describe('router', () => {
 		expect(node(wf, 'Run Listener').onError).toBe('continueRegularOutput');
 		expect(node(wf, 'Run Sync').parameters.options.waitForSubWorkflow).toBe(false);
 		expect(node(wf, 'Run Sync').parameters.workflowId.value).toContain('syncWorkflowId');
-		expect(targets(wf, 'Unknown Command')).toEqual(['Run Sync']);
+		expect(targets(wf, 'Unknown Command')).toEqual(['Has Sync ID']);
+		expect(targets(wf, 'Has Sync ID', 0)).toEqual(['Run Sync']);
+		expect(targets(wf, 'Has Sync ID', 1)).toEqual([]);
+		const cond = node(wf, 'Has Sync ID').parameters.conditions.conditions[0];
+		expect(cond.leftValue).toBe("={{ $('Decide').first().json.syncWorkflowId }}");
+		expect(cond.operator).toMatchObject({ type: 'string', operation: 'notEmpty' });
+	});
+
+	it('a failed edit goes to the error reply of its lane', () => {
+		for (const name of ['Edit Original', 'Edit Original With File']) {
+			expect(node(wf, name).onError, name).toBe('continueErrorOutput');
+			expect(targets(wf, name, 0), name).toEqual(['Send Followups']);
+			expect(targets(wf, name, 1), name).toEqual(['Edit Failed']);
+		}
+		const rules = node(wf, 'Edit Failed').parameters.rules.values;
+		expect(rules.map((r) => r.outputKey)).toEqual(['deferCommand', 'deferUpdate']);
+		expect(rules[0].conditions.conditions[0].leftValue).toBe("={{ $('Decide').first().json.route }}");
+		expect(targets(wf, 'Edit Failed', 0)).toEqual(['Command Error']);
+		expect(targets(wf, 'Edit Failed', 1)).toEqual(['Update Error']);
+		for (const name of ['Command Error', 'Update Error']) {
+			expect(node(wf, name).parameters.content).toBe("={{ $('Format').first().json.errorText }}");
+		}
 	});
 
 	it('refusal copy matches the global constraints and is ephemeral', () => {
@@ -459,6 +485,19 @@ describe('router', () => {
 		expect(n.alwaysOutputData).toBe(true);
 	});
 
+	it('input nodes inline only the workflowInput module', () => {
+		for (const name of ['Workflow Input', 'Autocomplete Input']) {
+			const js = node(wf, name).parameters.jsCode;
+			expect(js, name).toContain('function workflowInput');
+			expect(js, name).not.toContain('toDiscordMessage');
+			expect(js, name).not.toContain('formatResult');
+		}
+	});
+
+	it('Filter Message reads the message branch of Route Event explicitly', () => {
+		expect(node(wf, 'Filter Message').parameters.jsCode).toContain("$('Route Event').first(1)");
+	});
+
 	it('Workflow Input passes mode and interaction', () => {
 		const classified = { kind: 'component', commandName: 'x' };
 		const out = runCode(wf, 'Workflow Input', { nodes: { Decide: [{ json: { classified } }] }, input: [{ json: {} }] });
@@ -474,6 +513,9 @@ describe('router', () => {
 		});
 		expect(out).toHaveLength(1);
 		expect(out[0].json.action).toBe('editWithFile');
+		expect(out[0].json.errorText).toBe(
+			'Something went wrong running /x. The details are in the n8n execution log.',
+		);
 		expect(out[0].json.message.content).toBe('got it');
 		expect(out[0].binary).toEqual({ file });
 		const followups = runCode(wf, 'Send Followups', { nodes: { Format: out }, input: [{ json: {} }] });
@@ -483,6 +525,7 @@ describe('router', () => {
 	it('Autocomplete Result sends at most 25 choices', () => {
 		const choices = node(wf, 'Autocomplete Result').parameters.choices;
 		expect(choices).toContain('slice(0, 25)');
+		expect(node(wf, 'Autocomplete Result').executeOnce).toBe(true);
 		expect(node(wf, 'Run Autocomplete').alwaysOutputData).toBe(true);
 	});
 
@@ -555,6 +598,7 @@ describe('sync', () => {
 		expect(p).toMatchObject({ resource: 'applicationCommand', operation: 'bulkOverwriteGuild' });
 		expect(p.payload).toBe('={{ JSON.stringify($json.commands) }}');
 		expect(node(wf, 'Replace Table').executeOnce).toBe(true);
+		expect(node(wf, 'Replace Table').alwaysOutputData).toBe(true);
 	});
 
 	it('Build, Guilds and Report work on API-shaped data', () => {
@@ -601,6 +645,12 @@ describe('sync', () => {
 		expect(out[0].json.errors.length).toBeGreaterThan(0);
 		expect(out[0].json.abortMessage.startsWith('Sync aborted:\nDiscord Command: bad: name')).toBe(true);
 		expect(node(wf, 'Stop and Error').parameters.errorMessage).toBe('={{ $json.abortMessage }}');
+	});
+
+	it('Build aborts when no discord-command workflow was found', () => {
+		const out = runCode(wf, 'Build', { input: [{ json: {} }] });
+		expect(out[0].json.errors).toEqual(['no discord-command workflows found']);
+		expect(out[0].json.abortMessage).toBe('Sync aborted:\nno discord-command workflows found');
 	});
 
 	it('Guilds fails loudly without a guildIds row', () => {

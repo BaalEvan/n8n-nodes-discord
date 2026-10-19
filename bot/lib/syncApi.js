@@ -1,8 +1,10 @@
 function toSyncWorkflows(items) {
 	const workflows = [];
 	const skipped = [];
+	let found = 0;
 	(items || []).forEach(function (wf) {
 		if (!wf || wf.id === undefined || wf.id === null || wf.id === '') return;
+		found += 1;
 		const version = wf.activeVersion;
 		if (!version || !Array.isArray(version.nodes)) {
 			if (wf.active) skipped.push(wf.name + ': no published version');
@@ -10,7 +12,8 @@ function toSyncWorkflows(items) {
 		}
 		workflows.push({ id: String(wf.id), name: wf.name, active: true, publishedNodes: version.nodes });
 	});
-	return { workflows: workflows, skipped: skipped };
+	const errors = found === 0 ? ['no discord-command workflows found'] : [];
+	return { workflows: workflows, skipped: skipped, errors: errors };
 }
 
 function parseGuildIds(value) {
