@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { DiscordTrigger } from '../nodes/DiscordTrigger/DiscordTrigger.node';
 import { FakeGateway } from './support/fakeGateway';
-import { createFakeTrigger, type FakeTriggerOptions } from './support/fakeTrigger';
+import { createFakeTrigger, runTrigger, type FakeTriggerOptions } from './support/fakeTrigger';
 
 const captured = vi.hoisted(() => [] as Array<Record<string, unknown>>);
 
@@ -42,7 +42,7 @@ describe('trigger() alert wiring', () => {
 
 	async function activate(options: Partial<FakeTriggerOptions>) {
 		const fake = createFakeTrigger({ gatewayUrl: url, ...options });
-		const response = await node.trigger.call(fake);
+		const response = await runTrigger(node, fake);
 		closers.push(response.closeFunction ?? (async () => {}));
 		return fake;
 	}
@@ -57,7 +57,7 @@ describe('trigger() alert wiring', () => {
 			gatewayBotHttpStatus: 401,
 			params: { alertUserId: '42', alertAfterMinutes: 1 },
 		});
-		await expect(node.trigger.call(fake)).rejects.toThrow();
+		await expect(runTrigger(node, fake)).rejects.toThrow();
 		await expect.poll(() => messagePosts(fake).length).toBe(1);
 		await sleep(100);
 		expect(messagePosts(fake)).toHaveLength(1);
@@ -71,7 +71,7 @@ describe('trigger() alert wiring', () => {
 			gatewayBotHttpStatus: 401,
 			params: { alertUserId: '', alertAfterMinutes: 1 },
 		});
-		await expect(node.trigger.call(fake)).rejects.toThrow();
+		await expect(runTrigger(node, fake)).rejects.toThrow();
 		await sleep(100);
 		expect(fake.rest.filter((r) => r.method === 'POST')).toHaveLength(0);
 		expect(captured[0].alertSink).toBeUndefined();

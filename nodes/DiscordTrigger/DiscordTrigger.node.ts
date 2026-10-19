@@ -8,6 +8,7 @@ import {
 	type ITriggerResponse,
 } from 'n8n-workflow';
 
+import { calculateIntents } from '../Discord/shared/intents';
 import {
 	closeStaleConnection,
 	identifyBudgetFor,
@@ -65,6 +66,9 @@ export class DiscordTrigger implements INodeType {
 		properties: triggerProperties,
 	};
 
+	// Credentials and parameters resolve only while n8n holds the expression
+	// isolate (trigger() and closeFunction), so everything the background
+	// connection needs is read here once.
 	async trigger(this: ITriggerFunctions): Promise<ITriggerResponse> {
 		const event = this.getNodeParameter('event') as string;
 		const connectionName = (this.getNodeParameter('connectionName', 'default') as string) || 'default';
@@ -74,6 +78,19 @@ export class DiscordTrigger implements INodeType {
 		if (typeof botToken !== 'string' || botToken === '') {
 			throw new NodeOperationError(this.getNode(), 'The Discord credential has no bot token.');
 		}
+
+		const autoCalculateIntents = this.getNodeParameter('autoCalculateIntents') as boolean;
+		const selectedIntents = autoCalculateIntents
+			? []
+			: (this.getNodeParameter('intents') as string[]);
+		const includeBotMessages = this.getNodeParameter('includeBotMessages', false) as boolean;
+		const emitRawPayload = this.getNodeParameter('emitRawPayload') as boolean;
+		const alertUserId = ((this.getNodeParameter('alertUserId', '') as string) || '').trim();
+		const alertAfterMinutes = Math.max(
+			1,
+			Number(this.getNodeParameter('alertAfterMinutes', 10)) || 10,
+		);
+
 		const fingerprint = tokenFingerprint(botToken);
 		const mode = this.getMode() === 'manual' ? 'manual' : 'trigger';
 
@@ -108,18 +125,22 @@ export class DiscordTrigger implements INodeType {
 			this.emit([this.helpers.returnJsonArray([eventData])]);
 		};
 
-		const alertUserId = ((this.getNodeParameter('alertUserId', '') as string) || '').trim();
-		const alertAfterMinutes = Math.max(
-			1,
-			Number(this.getNodeParameter('alertAfterMinutes', 10)) || 10,
+		const connection = new DiscordGatewayConnection(
+			this,
+			{
+				token: botToken,
+				event,
+				intents: calculateIntents(event, selectedIntents),
+				includeBotMessages,
+				emitRawPayload,
+			},
+			onEvent,
+			{
+				identifyBudget: identifyBudgetFor(fingerprint),
+				alertSink: alertUserId ? createDmAlertSink(this, botToken, alertUserId) : undefined,
+				alertAfterMs: alertAfterMinutes * 60_000,
+			},
 		);
-
-		const connection = new DiscordGatewayConnection(this, event, onEvent, {
-			identifyBudget: identifyBudgetFor(fingerprint),
-			token: botToken,
-			alertSink: alertUserId ? createDmAlertSink(this, alertUserId) : undefined,
-			alertAfterMs: alertAfterMinutes * 60_000,
-		});
 
 		const sender = (payload: { op: number; d: unknown }) => connection.sendCommand(payload);
 		let senderRegistered = false;

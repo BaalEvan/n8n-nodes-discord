@@ -44,13 +44,22 @@ export function releaseFatalAlerts(fingerprint: string): void {
 	}
 }
 
-export function createDmAlertSink(trigger: ITriggerFunctions, userId: string): AlertSink {
+export function botAuthHeaders(token: string): IDataObject {
+	return { Authorization: `Bot ${token}` };
+}
+
+export function createDmAlertSink(
+	trigger: ITriggerFunctions,
+	token: string,
+	userId: string,
+): AlertSink {
 	let channelId: string | undefined;
 
 	const request = (url: string, body: IDataObject) =>
-		trigger.helpers.httpRequestWithAuthentication.call(trigger, 'discordGatewayBotApi', {
+		trigger.helpers.httpRequest({
 			method: 'POST',
 			url: `${DISCORD_API_BASE_URL}${url}`,
+			headers: botAuthHeaders(token),
 			body,
 			json: true,
 			timeout: REST_TIMEOUT_MS,

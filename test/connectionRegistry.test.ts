@@ -9,7 +9,7 @@ import {
 import { getGatewaySender } from '../nodes/DiscordTrigger/gatewaySendBus';
 import { DiscordTrigger } from '../nodes/DiscordTrigger/DiscordTrigger.node';
 import { FakeGateway } from './support/fakeGateway';
-import { createFakeTrigger, type FakeTriggerOptions } from './support/fakeTrigger';
+import { createFakeTrigger, runTrigger, type FakeTriggerOptions } from './support/fakeTrigger';
 
 vi.mock('../nodes/DiscordTrigger/DiscordGatewayConnection', async (importOriginal) => {
 	const actual =
@@ -47,7 +47,7 @@ describe('connection registry', () => {
 
 	async function activate(options: Partial<FakeTriggerOptions> = {}) {
 		const fake = createFakeTrigger({ gatewayUrl: url, ...options });
-		const response = await node.trigger.call(fake);
+		const response = await runTrigger(node, fake);
 		const close = response.closeFunction ?? (async () => {});
 		closers.push(close);
 		return { fake, close };

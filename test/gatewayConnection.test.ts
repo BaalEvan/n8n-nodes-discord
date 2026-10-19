@@ -11,6 +11,7 @@ import { PACKAGE_VERSION } from '../nodes/DiscordTrigger/version';
 import { FakeGateway } from './support/fakeGateway';
 import {
 	createFakeTrigger,
+	gatewaySettings,
 	type FakeTrigger,
 	type FakeTriggerOptions,
 } from './support/fakeTrigger';
@@ -39,7 +40,7 @@ describe('DiscordGatewayConnection', () => {
 	): DiscordGatewayConnection {
 		const connection = new DiscordGatewayConnection(
 			trigger,
-			'*',
+			gatewaySettings(trigger),
 			(data) => trigger.emitted.push(data),
 			{
 				backoff,

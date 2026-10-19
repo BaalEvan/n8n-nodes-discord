@@ -8,9 +8,9 @@ import {
 } from 'n8n-workflow';
 
 import { DISCORD_API_BASE_URL } from '../Discord/shared/constants';
-import { calculateIntents } from '../Discord/shared/intents';
 import {
 	alertText,
+	botAuthHeaders,
 	claimFatalAlert,
 	releaseFatalAlerts,
 	REST_TIMEOUT_MS,
@@ -53,10 +53,17 @@ export interface DiscordGatewayConnectionOptions {
 	outageCheckMs?: number;
 	now?: () => number;
 	connectTimeoutMs?: number;
-	token?: string;
 	stablePeriodMs?: number;
 	identifySpacingMs?: number;
 	invalidSessionWait?: { minMs: number; maxMs: number };
+}
+
+export interface GatewayConnectionSettings {
+	token: string;
+	event: string;
+	intents: number;
+	includeBotMessages: boolean;
+	emitRawPayload: boolean;
 }
 
 export class DiscordGatewayConnection {
@@ -66,7 +73,6 @@ export class DiscordGatewayConnection {
 	private readonly backoff: BackoffOptions;
 	private readonly identifyBudget: IdentifyBudget;
 	private readonly connectTimeoutMs?: number;
-	private readonly fixedToken?: string;
 	private readonly alertSink?: AlertSink;
 	private readonly alertAfterMs: number;
 	private readonly outageCheckMs: number;
@@ -74,7 +80,7 @@ export class DiscordGatewayConnection {
 	private readonly stablePeriodMs: number;
 	private readonly identifySpacingMs: number;
 	private readonly invalidSessionWait: { minMs: number; maxMs: number };
-	private fingerprint = 'unknown';
+	private readonly fingerprint: string;
 	private downSince: number | null = null;
 	private downAlertSent = false;
 	private outageLoopRunning = false;
@@ -88,14 +94,14 @@ export class DiscordGatewayConnection {
 
 	constructor(
 		private readonly trigger: ITriggerFunctions,
-		private readonly event: string,
+		private readonly settings: GatewayConnectionSettings,
 		private readonly onEvent: (data: IDataObject) => void,
 		options: DiscordGatewayConnectionOptions = {},
 	) {
 		this.backoff = options.backoff ?? DEFAULT_BACKOFF;
 		this.identifyBudget = options.identifyBudget ?? new IdentifyBudget();
 		this.connectTimeoutMs = options.connectTimeoutMs;
-		this.fixedToken = options.token;
+		this.fingerprint = tokenFingerprint(settings.token);
 		this.alertSink = options.alertSink;
 		this.alertAfterMs = options.alertAfterMs ?? 10 * MS_PER_MINUTE;
 		this.outageCheckMs = options.outageCheckMs ?? DEFAULT_OUTAGE_CHECK_MS;
@@ -139,16 +145,6 @@ export class DiscordGatewayConnection {
 	private async connectOnce(): Promise<void> {
 		if (this.closing) return;
 
-		const token =
-			this.fixedToken ??
-			((await this.trigger.getCredentials('discordGatewayBotApi')).botToken as string);
-		this.fingerprint = tokenFingerprint(token);
-		const autoCalculateIntents = this.trigger.getNodeParameter('autoCalculateIntents') as boolean;
-		const selectedIntents = autoCalculateIntents
-			? []
-			: (this.trigger.getNodeParameter('intents') as string[]);
-		const intents = calculateIntents(this.event, selectedIntents);
-
 		const resumeState = this.readResumeState();
 		if (!resumeState) {
 			const waitMs = this.identifyBudget.msUntilAvailable();
@@ -169,8 +165,8 @@ export class DiscordGatewayConnection {
 		this.ws = ws;
 		await ws
 			.connect({
-				token,
-				intents,
+				token: this.settings.token,
+				intents: this.settings.intents,
 				resumeState,
 				onIdentify: () => this.identifyBudget.record(),
 			})
@@ -409,10 +405,11 @@ export class DiscordGatewayConnection {
 	}
 
 	private async getGatewayUrl(): Promise<string> {
-		const response = await this.trigger.helpers.httpRequestWithAuthentication
-			.call(this.trigger, 'discordGatewayBotApi', {
+		const response = await this.trigger.helpers
+			.httpRequest({
 				method: 'GET',
 				url: `${DISCORD_API_BASE_URL}/gateway/bot`,
+				headers: botAuthHeaders(this.settings.token),
 				json: true,
 				timeout: REST_TIMEOUT_MS,
 			})
@@ -455,19 +452,15 @@ export class DiscordGatewayConnection {
 			});
 		}
 
-		if (this.event !== '*' && eventName !== this.event) {
+		const { event, includeBotMessages, emitRawPayload } = this.settings;
+		if (event !== '*' && eventName !== event) {
 			return;
 		}
 
-		const includeBotMessages = this.trigger.getNodeParameter(
-			'includeBotMessages',
-			false,
-		) as boolean;
 		if (!shouldEmitGatewayEvent(eventName, data, { includeBotMessages })) {
 			return;
 		}
 
-		const emitRawPayload = this.trigger.getNodeParameter('emitRawPayload') as boolean;
 		this.onEvent(
 			emitRawPayload
 				? raw

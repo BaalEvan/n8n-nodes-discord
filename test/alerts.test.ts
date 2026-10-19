@@ -8,7 +8,7 @@ import {
 	type DiscordGatewayConnectionOptions,
 } from '../nodes/DiscordTrigger/DiscordGatewayConnection';
 import { FakeGateway } from './support/fakeGateway';
-import { createFakeTrigger, type FakeTrigger } from './support/fakeTrigger';
+import { createFakeTrigger, gatewaySettings, type FakeTrigger } from './support/fakeTrigger';
 
 const backoff = { baseDelayMs: 10, maxDelayMs: 50, random: () => 0.5 };
 const noop = () => {};
@@ -50,12 +50,11 @@ describe('owner alerts', () => {
 	) {
 		const connection = new DiscordGatewayConnection(
 			trigger,
-			'*',
+			gatewaySettings(trigger, { token }),
 			(data) => events.push(data.event as string),
 			{
 				backoff,
-				token,
-				alertSink: userId ? createDmAlertSink(trigger, userId) : undefined,
+				alertSink: userId ? createDmAlertSink(trigger, token, userId) : undefined,
 				alertAfterMs: 100,
 				outageCheckMs: 20,
 				stablePeriodMs: 20,
@@ -142,7 +141,7 @@ describe('owner alerts', () => {
 		} as never);
 		const { trigger, token } = await setup('tok-log');
 		trigger.failMessagePosts = 1;
-		const sink = createDmAlertSink(trigger, '42');
+		const sink = createDmAlertSink(trigger, trigger.token, '42');
 		expect(await sink.send('down', 'x')).toBe(false);
 		const alertWarnings = warnings.filter((w) => w[0] === 'Discord owner alert failed');
 		expect(alertWarnings).toHaveLength(1);
@@ -156,7 +155,7 @@ describe('owner alerts', () => {
 	it('retries the channel POST after it failed', async () => {
 		const { trigger } = await setup('tok-chan');
 		trigger.failChannelPosts = 1;
-		const sink = createDmAlertSink(trigger, '42');
+		const sink = createDmAlertSink(trigger, trigger.token, '42');
 		expect(await sink.send('down', 'a')).toBe(false);
 		expect(await sink.send('down', 'a')).toBe(true);
 		expect(channelPosts(trigger)).toHaveLength(2);
@@ -257,7 +256,7 @@ describe('owner alerts', () => {
 
 	it('passes a timeout to the alert requests', async () => {
 		const { trigger } = await setup('tok-timeout');
-		const sink = createDmAlertSink(trigger, '42');
+		const sink = createDmAlertSink(trigger, trigger.token, '42');
 		expect(await sink.send('down', 'a')).toBe(true);
 		expect(trigger.requests).toHaveLength(2);
 		expect(trigger.requests.map((r) => r.timeout)).toEqual([15000, 15000]);
