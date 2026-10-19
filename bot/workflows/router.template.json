@@ -1,0 +1,1499 @@
+{
+	"name": "Discord Router",
+	"nodes": [
+		{
+			"id": "9c4577c4-492b-42cc-a103-36c42ba30d74",
+			"name": "Discord Trigger",
+			"type": "CUSTOM.discordTrigger",
+			"typeVersion": 1,
+			"position": [
+				0,
+				300
+			],
+			"parameters": {
+				"event": "*",
+				"connectionName": "default",
+				"alertUserId": "__OWNER_ID__",
+				"alertAfterMinutes": 10,
+				"autoCalculateIntents": false,
+				"intents": [
+					"GUILDS",
+					"GUILD_MESSAGES",
+					"MESSAGE_CONTENT"
+				],
+				"includeBotMessages": true,
+				"emitRawPayload": false
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "ea22aad3-63a6-4d22-a54c-d6084735c14d",
+			"name": "Route Event",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				220,
+				300
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "e1e0de86-d102-441f-a96f-cf5fb4f2f48f",
+										"leftValue": "={{ $json.event }}",
+										"rightValue": "INTERACTION_CREATE",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "interaction"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "e6612ef2-e10c-4372-a0bc-cd4f24b05d27",
+										"leftValue": "={{ $json.event }}",
+										"rightValue": "MESSAGE_CREATE",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									},
+									{
+										"id": "cafe94c5-ff97-426d-a230-0eb1ff214a96",
+										"leftValue": "={{ $json.event }}",
+										"rightValue": "MESSAGE_UPDATE",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									},
+									{
+										"id": "8d78f0b9-cb92-4e97-a646-93e14eb203b0",
+										"leftValue": "={{ $json.event }}",
+										"rightValue": "MESSAGE_DELETE",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "or"
+							},
+							"renameOutput": true,
+							"outputKey": "message"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "4b5a7be8-d54a-440e-ab2f-9cbe2c3398fa",
+			"name": "Classify",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				440,
+				200
+			],
+			"parameters": {
+				"mode": "runOnceForEachItem",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/customId.js lib/classify.js\nreturn { json: classifyInteraction($json.data) };"
+			}
+		},
+		{
+			"id": "6d3c6004-8fd6-4556-aadf-e0a5a830c1b8",
+			"name": "Lookup Command",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				660,
+				200
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "discord_commands"
+				},
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "name",
+							"condition": "eq",
+							"keyValue": "={{ $json.commandName || '' }}"
+						}
+					]
+				},
+				"limit": 1
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "7cf0025e-5592-404d-acf9-378a09e71b8c",
+			"name": "Load Config",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				880,
+				200
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "discord_config"
+				},
+				"matchType": "anyCondition",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "key",
+							"condition": "eq",
+							"keyValue": "ownerId"
+						},
+						{
+							"keyName": "key",
+							"condition": "eq",
+							"keyValue": "syncWorkflowId"
+						}
+					]
+				},
+				"returnAll": true
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "27f83908-ec0e-4dcd-abbd-b827e8883979",
+			"name": "Decide",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1100,
+				200
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/definition.js lib/whitelist.js lib/customId.js lib/route.js\nconst classified = $('Classify').first().json;\nconst lookup = $('Lookup Command').first().json || {};\nconst row =\n\tlookup.workflowId && lookup.name === classified.commandName\n\t\t? { workflowId: String(lookup.workflowId), definition: lookup.definition }\n\t\t: null;\nconst config = {};\nfor (const item of $input.all()) {\n\tif (item.json && item.json.key) config[item.json.key] = item.json.value;\n}\nconst decision = decideRoute(classified, row, String(config.ownerId || ''));\nreturn [\n\t{\n\t\tjson: Object.assign({}, decision, {\n\t\t\tclassified: classified,\n\t\t\tsyncWorkflowId: String(config.syncWorkflowId || ''),\n\t\t}),\n\t},\n];"
+			}
+		},
+		{
+			"id": "c8175ddc-0d9d-477c-ab88-6b13d6c9f4a0",
+			"name": "Route",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				1320,
+				200
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "ae2692df-458f-4eb8-ac6f-b97cfe58e399",
+										"leftValue": "={{ $json.route }}",
+										"rightValue": "refuse",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "refuse"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "9c25ef74-d55b-4af5-ae8e-f5c42643626e",
+										"leftValue": "={{ $json.route }}",
+										"rightValue": "refuseAutocomplete",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "refuseAutocomplete"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "95292d4d-69a2-4bdc-af81-12a18babb68d",
+										"leftValue": "={{ $json.route }}",
+										"rightValue": "unknownCommand",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "unknownCommand"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "98c597ae-a472-457c-a5b4-f33370a11d17",
+										"leftValue": "={{ $json.route }}",
+										"rightValue": "unknownComponent",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "unknownComponent"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "7ca67a3b-059a-40e5-a353-60d1a7400ba4",
+										"leftValue": "={{ $json.route }}",
+										"rightValue": "openModal",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "openModal"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "f0d11ea8-02b9-4a57-ae8b-65770f0df4ad",
+										"leftValue": "={{ $json.route }}",
+										"rightValue": "deferCommand",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "deferCommand"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "08fd39c1-901e-468a-ad1d-def7df4ce5c0",
+										"leftValue": "={{ $json.route }}",
+										"rightValue": "autocomplete",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "autocomplete"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "4b9c25ff-b216-4d20-ae8d-d2179326e1d7",
+										"leftValue": "={{ $json.route }}",
+										"rightValue": "deferUpdate",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "deferUpdate"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "01018622-82f0-4a22-a1f3-efdb0a0abf41",
+			"name": "Refuse",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1560,
+				-400
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "interactionResponse",
+				"operation": "createInitialCallback",
+				"interactionId": "={{ $('Classify').first().json.interactionId }}",
+				"interactionToken": "={{ $('Classify').first().json.token }}",
+				"responseType": 4,
+				"content": "You're not allowed to use this.",
+				"flags": 64
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "06dcc663-201b-430e-a651-b431856aa29e",
+			"name": "Refuse Autocomplete",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1560,
+				-250
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "interactionResponse",
+				"operation": "createInitialCallback",
+				"interactionId": "={{ $('Classify').first().json.interactionId }}",
+				"interactionToken": "={{ $('Classify').first().json.token }}",
+				"responseType": 8,
+				"choices": "[]"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "1854e387-73b3-44cb-aa15-7998188f35f5",
+			"name": "Unknown Command",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1560,
+				-100
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "interactionResponse",
+				"operation": "createInitialCallback",
+				"interactionId": "={{ $('Classify').first().json.interactionId }}",
+				"interactionToken": "={{ $('Classify').first().json.token }}",
+				"responseType": 4,
+				"content": "This command is not available right now.",
+				"flags": 64
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "6b798753-92e5-4d7c-aa4c-ea91839c07a8",
+			"name": "Run Sync",
+			"type": "n8n-nodes-base.executeWorkflow",
+			"typeVersion": 1.4,
+			"position": [
+				1780,
+				-100
+			],
+			"parameters": {
+				"source": "database",
+				"workflowId": {
+					"__rl": true,
+					"mode": "id",
+					"value": "={{ $('Decide').first().json.syncWorkflowId }}"
+				},
+				"workflowInputs": {
+					"mappingMode": "defineBelow",
+					"value": {},
+					"matchingColumns": [],
+					"schema": [],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				},
+				"mode": "once",
+				"options": {
+					"waitForSubWorkflow": false
+				}
+			}
+		},
+		{
+			"id": "f65ac545-8e97-47ad-a9ab-0c3b1031674d",
+			"name": "Unknown Component",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1560,
+				50
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "interactionResponse",
+				"operation": "createInitialCallback",
+				"interactionId": "={{ $('Classify').first().json.interactionId }}",
+				"interactionToken": "={{ $('Classify').first().json.token }}",
+				"responseType": 4,
+				"content": "This action is no longer available.",
+				"flags": 64
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "775340a2-097c-4141-aa80-1f8cc7b44e68",
+			"name": "Open Modal",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1560,
+				200
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "interactionResponse",
+				"operation": "createInitialCallback",
+				"interactionId": "={{ $('Classify').first().json.interactionId }}",
+				"interactionToken": "={{ $('Classify').first().json.token }}",
+				"responseType": 9,
+				"customId": "={{ $json.modal.custom_id }}",
+				"title": "={{ $json.modal.title }}",
+				"modalComponents": "={{ JSON.stringify($json.modal.components) }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "162c2e9a-502b-410e-a47c-60c37c11a948",
+			"name": "Defer Command",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1560,
+				350
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "interactionResponse",
+				"operation": "createInitialCallback",
+				"interactionId": "={{ $('Classify').first().json.interactionId }}",
+				"interactionToken": "={{ $('Classify').first().json.token }}",
+				"responseType": 5,
+				"flags": "={{ $json.ephemeral ? 64 : 0 }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "50a71a0c-2ac5-44b6-a71b-d47a4a313b15",
+			"name": "Defer Update",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1560,
+				650
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "interactionResponse",
+				"operation": "createInitialCallback",
+				"interactionId": "={{ $('Classify').first().json.interactionId }}",
+				"interactionToken": "={{ $('Classify').first().json.token }}",
+				"responseType": 6
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "c44d47b7-22e7-4a3e-a4a5-fb1ffb23078c",
+			"name": "Workflow Input",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1780,
+				500
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/format.js\nreturn [{ json: workflowInput($('Decide').first().json.classified) }];"
+			}
+		},
+		{
+			"id": "47920740-e5e3-4227-a447-2f0dd8405f1a",
+			"name": "Run Command",
+			"type": "n8n-nodes-base.executeWorkflow",
+			"typeVersion": 1.4,
+			"position": [
+				2000,
+				500
+			],
+			"parameters": {
+				"source": "database",
+				"workflowId": {
+					"__rl": true,
+					"mode": "id",
+					"value": "={{ $('Decide').first().json.workflowId }}"
+				},
+				"workflowInputs": {
+					"mappingMode": "defineBelow",
+					"value": {},
+					"matchingColumns": [],
+					"schema": [],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				},
+				"mode": "once",
+				"options": {
+					"waitForSubWorkflow": true
+				}
+			},
+			"alwaysOutputData": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "97c09197-32c1-44c2-a3fe-6cfaca2f357d",
+			"name": "Format",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				2220,
+				500
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/result.js lib/format.js\nconst decision = $('Decide').first().json;\nconst item = $input.first();\nconst hasFile = Boolean(item.binary && item.binary.file);\nconst out = { json: Object.assign({ result: item.json }, formatResult(item.json, hasFile, decision)) };\nif (hasFile) out.binary = { file: item.binary.file };\nreturn [out];"
+			}
+		},
+		{
+			"id": "5569b1ba-2a84-4298-af3c-e515b44afe32",
+			"name": "Edit Mode",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				2440,
+				500
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "c336270d-c888-4541-a709-e9d22bb8af48",
+										"leftValue": "={{ $json.action }}",
+										"rightValue": "edit",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "edit"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "226fe10b-0c57-49cf-a057-1450d2c2e4f7",
+										"leftValue": "={{ $json.action }}",
+										"rightValue": "editWithFile",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "editWithFile"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "0f1f0518-04f4-46fd-a1a5-5812f9a2c376",
+										"leftValue": "={{ $json.action }}",
+										"rightValue": "skip",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "skip"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "3cae0cf3-9607-4c22-af05-8e5e20e1945c",
+										"leftValue": "={{ $json.action }}",
+										"rightValue": "commandError",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "commandError"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "28698282-f20b-4a67-ace4-453929ff3339",
+										"leftValue": "={{ $json.action }}",
+										"rightValue": "updateError",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "updateError"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "3ce383cd-baab-411a-a7e4-1c86cd5e1d04",
+			"name": "Edit Original",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2680,
+				350
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "interactionResponse",
+				"operation": "editOriginalResponse",
+				"applicationId": "={{ $('Classify').first().json.applicationId }}",
+				"interactionToken": "={{ $('Classify').first().json.token }}",
+				"payload": "={{ JSON.stringify($json.message) }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "6369eb6d-3dc2-4da1-a158-db6e2bff24db",
+			"name": "Edit Original With File",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2680,
+				500
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "interactionResponse",
+				"operation": "editOriginalResponse",
+				"applicationId": "={{ $('Classify').first().json.applicationId }}",
+				"interactionToken": "={{ $('Classify').first().json.token }}",
+				"payload": "={{ JSON.stringify($json.message) }}",
+				"attachments": {
+					"attachment": [
+						{
+							"binaryPropertyName": "file"
+						}
+					]
+				}
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "225b8c82-37b8-4b23-a73f-5bc41143dd02",
+			"name": "Send Followups",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				2920,
+				450
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/result.js\nreturn toFollowups($('Format').first().json.result).map(function (f) {\n\treturn { json: f };\n});"
+			}
+		},
+		{
+			"id": "e323007e-64d9-47c0-a936-880fff961a36",
+			"name": "Create Followup Message",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				3140,
+				450
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "interactionResponse",
+				"operation": "createFollowupMessage",
+				"applicationId": "={{ $('Classify').first().json.applicationId }}",
+				"interactionToken": "={{ $('Classify').first().json.token }}",
+				"payload": "={{ JSON.stringify($json) }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "1928a678-6f4b-49b7-a17b-be8b344fda7a",
+			"name": "Command Error",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2680,
+				700
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "interactionResponse",
+				"operation": "editOriginalResponse",
+				"applicationId": "={{ $('Classify').first().json.applicationId }}",
+				"interactionToken": "={{ $('Classify').first().json.token }}",
+				"content": "={{ $json.errorText }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "845f6f38-1095-4c7c-acee-482b2decf3a6",
+			"name": "Update Error",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2680,
+				850
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "interactionResponse",
+				"operation": "createFollowupMessage",
+				"applicationId": "={{ $('Classify').first().json.applicationId }}",
+				"interactionToken": "={{ $('Classify').first().json.token }}",
+				"content": "={{ $json.errorText }}",
+				"flags": 64
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "763c685e-1b05-4361-a8f4-443a64bb54e0",
+			"name": "Autocomplete Input",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1560,
+				950
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/format.js\nreturn [{ json: workflowInput($('Decide').first().json.classified) }];"
+			}
+		},
+		{
+			"id": "0a3ee5ec-018e-45c8-a6f2-f58ce4f00551",
+			"name": "Run Autocomplete",
+			"type": "n8n-nodes-base.executeWorkflow",
+			"typeVersion": 1.4,
+			"position": [
+				1780,
+				950
+			],
+			"parameters": {
+				"source": "database",
+				"workflowId": {
+					"__rl": true,
+					"mode": "id",
+					"value": "={{ $('Decide').first().json.workflowId }}"
+				},
+				"workflowInputs": {
+					"mappingMode": "defineBelow",
+					"value": {},
+					"matchingColumns": [],
+					"schema": [],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				},
+				"mode": "once",
+				"options": {
+					"waitForSubWorkflow": true
+				}
+			},
+			"alwaysOutputData": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "3de21b6f-1043-47d0-a558-fb9793e858e1",
+			"name": "Autocomplete Result",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2000,
+				950
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "interactionResponse",
+				"operation": "createInitialCallback",
+				"interactionId": "={{ $('Classify').first().json.interactionId }}",
+				"interactionToken": "={{ $('Classify').first().json.token }}",
+				"responseType": 8,
+				"choices": "={{ JSON.stringify((Array.isArray($json.choices) ? $json.choices : []).slice(0, 25)) }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "74940894-64e0-4695-a716-0e02a5feff66",
+			"name": "Load Bot Config",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				440,
+				1250
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "discord_config"
+				},
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "key",
+							"condition": "eq",
+							"keyValue": "botUserId"
+						}
+					]
+				},
+				"limit": 1
+			}
+		},
+		{
+			"id": "eefc67c8-64eb-4836-a97e-559ddc07f5a6",
+			"name": "Filter Message",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				660,
+				1250
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/listeners.js\nconst routed = $('Route Event').first().json;\nconst config = $input.first().json || {};\nconst filtered = filterMessage(routed.event, routed.data, String(config.value || ''));\nreturn filtered ? [{ json: filtered }] : [];"
+			}
+		},
+		{
+			"id": "dc984769-634f-4f5d-af96-c5f9d8119560",
+			"name": "Lookup Listeners",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				880,
+				1250
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "discord_listeners"
+				},
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "event",
+							"condition": "eq",
+							"keyValue": "={{ $json.event }}"
+						}
+					]
+				},
+				"returnAll": true
+			}
+		},
+		{
+			"id": "291f7158-d1bc-4c72-ab69-5332dbd28803",
+			"name": "Listener Input",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1100,
+				1250
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/listeners.js\nconst filtered = $('Filter Message').first().json;\nconst rows = $input.all().map(function (i) {\n\treturn i.json;\n});\nreturn listenerInputs(rows, filtered).map(function (x) {\n\treturn { json: x };\n});"
+			}
+		},
+		{
+			"id": "ae843755-6c0d-4dba-ace9-41a9cb91ae03",
+			"name": "Run Listener",
+			"type": "n8n-nodes-base.executeWorkflow",
+			"typeVersion": 1.4,
+			"position": [
+				1320,
+				1250
+			],
+			"parameters": {
+				"source": "database",
+				"workflowId": {
+					"__rl": true,
+					"mode": "id",
+					"value": "={{ $json.listener.workflowId }}"
+				},
+				"workflowInputs": {
+					"mappingMode": "defineBelow",
+					"value": {},
+					"matchingColumns": [],
+					"schema": [],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				},
+				"mode": "each",
+				"options": {
+					"waitForSubWorkflow": false
+				}
+			},
+			"onError": "continueRegularOutput"
+		}
+	],
+	"connections": {
+		"Discord Trigger": {
+			"main": [
+				[
+					{
+						"node": "Route Event",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Route Event": {
+			"main": [
+				[
+					{
+						"node": "Classify",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Load Bot Config",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Classify": {
+			"main": [
+				[
+					{
+						"node": "Lookup Command",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Lookup Command": {
+			"main": [
+				[
+					{
+						"node": "Load Config",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Load Config": {
+			"main": [
+				[
+					{
+						"node": "Decide",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Decide": {
+			"main": [
+				[
+					{
+						"node": "Route",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Route": {
+			"main": [
+				[
+					{
+						"node": "Refuse",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Refuse Autocomplete",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Unknown Command",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Unknown Component",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Open Modal",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Defer Command",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Autocomplete Input",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Defer Update",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Unknown Command": {
+			"main": [
+				[
+					{
+						"node": "Run Sync",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Defer Command": {
+			"main": [
+				[
+					{
+						"node": "Workflow Input",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Defer Update": {
+			"main": [
+				[
+					{
+						"node": "Workflow Input",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Workflow Input": {
+			"main": [
+				[
+					{
+						"node": "Run Command",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Run Command": {
+			"main": [
+				[
+					{
+						"node": "Format",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Format": {
+			"main": [
+				[
+					{
+						"node": "Edit Mode",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Edit Mode": {
+			"main": [
+				[
+					{
+						"node": "Edit Original",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Edit Original With File",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Send Followups",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Command Error",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Update Error",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Edit Original": {
+			"main": [
+				[
+					{
+						"node": "Send Followups",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Edit Original With File": {
+			"main": [
+				[
+					{
+						"node": "Send Followups",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Send Followups": {
+			"main": [
+				[
+					{
+						"node": "Create Followup Message",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Autocomplete Input": {
+			"main": [
+				[
+					{
+						"node": "Run Autocomplete",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Run Autocomplete": {
+			"main": [
+				[
+					{
+						"node": "Autocomplete Result",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Load Bot Config": {
+			"main": [
+				[
+					{
+						"node": "Filter Message",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Filter Message": {
+			"main": [
+				[
+					{
+						"node": "Lookup Listeners",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Lookup Listeners": {
+			"main": [
+				[
+					{
+						"node": "Listener Input",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Listener Input": {
+			"main": [
+				[
+					{
+						"node": "Run Listener",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	}
+}

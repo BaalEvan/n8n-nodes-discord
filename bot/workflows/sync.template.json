@@ -1,0 +1,517 @@
+{
+	"name": "Discord Sync",
+	"nodes": [
+		{
+			"id": "705a5f42-9bf3-4e16-aaaa-f97d34520306",
+			"name": "When called by another workflow",
+			"type": "n8n-nodes-base.executeWorkflowTrigger",
+			"typeVersion": 1.3,
+			"position": [
+				0,
+				200
+			],
+			"parameters": {
+				"inputSource": "passthrough"
+			}
+		},
+		{
+			"id": "35b793ab-9211-4a9f-a90f-61a4338f785b",
+			"name": "Manual Trigger",
+			"type": "n8n-nodes-base.manualTrigger",
+			"typeVersion": 1,
+			"position": [
+				0,
+				400
+			],
+			"parameters": {}
+		},
+		{
+			"id": "25cccbd7-7199-4291-a3eb-6f4bc19d747d",
+			"name": "Get Workflows",
+			"type": "n8n-nodes-base.n8n",
+			"typeVersion": 1,
+			"position": [
+				220,
+				300
+			],
+			"parameters": {
+				"resource": "workflow",
+				"operation": "getAll",
+				"returnAll": true,
+				"filters": {
+					"activeWorkflows": true,
+					"tags": "discord-command"
+				},
+				"requestOptions": {}
+			},
+			"credentials": {
+				"n8nApi": {
+					"name": "n8n API"
+				}
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "b096b945-d0d4-4a90-a39e-3ab3bf7549da",
+			"name": "Build",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				440,
+				300
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/definition.js lib/syncPayload.js lib/syncApi.js\nconst input = toSyncWorkflows(\n\t$input.all().map(function (i) {\n\t\treturn i.json;\n\t}),\n);\nconst built = buildCommandList(input.workflows);\nbuilt.skipped = input.skipped.concat(built.skipped);\nbuilt.abortMessage = syncAbortMessage(built.errors);\nreturn [{ json: built }];"
+			}
+		},
+		{
+			"id": "7c6656cd-eb9c-46d2-aa78-6c8a0ec62646",
+			"name": "Has Errors",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				660,
+				300
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "a31a4432-aed6-42cb-a7fc-1d83a445abe7",
+							"leftValue": "={{ $json.errors.length }}",
+							"rightValue": 0,
+							"operator": {
+								"type": "number",
+								"operation": "gt"
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "0c4c25f0-98b5-40ef-a21a-5e813ca7d3fe",
+			"name": "Stop and Error",
+			"type": "n8n-nodes-base.stopAndError",
+			"typeVersion": 1,
+			"position": [
+				880,
+				200
+			],
+			"parameters": {
+				"errorType": "errorMessage",
+				"errorMessage": "={{ $json.abortMessage }}"
+			}
+		},
+		{
+			"id": "2b9cb0d1-7844-48ca-acef-d0f1267f78bb",
+			"name": "Load Config",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				880,
+				400
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "discord_config"
+				},
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "key",
+							"condition": "eq",
+							"keyValue": "guildIds"
+						}
+					]
+				},
+				"limit": 1
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "ca7fa9c0-9dda-4b9b-a03f-2791f8add031",
+			"name": "Get Application",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1100,
+				400
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "application",
+				"operation": "getCurrent"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
+			"id": "29cad277-225c-4ff2-a29b-ab235886d5e8",
+			"name": "Guilds",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1320,
+				400
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/syncApi.js\nconst built = $('Build').first().json;\nconst guildIds = parseGuildIds(($('Load Config').first().json || {}).value);\nconst applicationId = String(($('Get Application').first().json || {}).id || '');\nif (!applicationId) throw new Error('Get Application returned no application id');\nreturn guildIds.map(function (guildId) {\n\treturn { json: { guildId: guildId, applicationId: applicationId, commands: built.commands } };\n});"
+			}
+		},
+		{
+			"id": "33327b66-dd9b-430b-a5fb-44900a9f286d",
+			"name": "Register",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				1540,
+				400
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "applicationCommand",
+				"operation": "bulkOverwriteGuild",
+				"applicationId": "={{ $json.applicationId }}",
+				"guildId": "={{ $json.guildId }}",
+				"payload": "={{ JSON.stringify($json.commands) }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "fc68b06f-adb8-4777-a166-0f1b4dd4ba03",
+			"name": "Replace Table",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				1760,
+				400
+			],
+			"parameters": {
+				"resource": "table",
+				"operation": "clear",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "discord_commands"
+				}
+			},
+			"executeOnce": true
+		},
+		{
+			"id": "e799dc3e-73d5-44fa-af26-b07f277719e5",
+			"name": "Has Rows",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1980,
+				400
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "a5f0517e-caaa-4243-ae6d-bd815f5b3185",
+							"leftValue": "={{ $('Build').first().json.table.length }}",
+							"rightValue": 0,
+							"operator": {
+								"type": "number",
+								"operation": "gt"
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "abcacb1e-91f5-4fa4-a02d-0d09fa7c8eb9",
+			"name": "Table Rows",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				2200,
+				300
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "return $('Build').first().json.table.map(function (row) {\n\treturn { json: row };\n});"
+			}
+		},
+		{
+			"id": "c0d49368-03fd-46bd-ae83-b6ddfa197b57",
+			"name": "Insert Rows",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				2420,
+				300
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "insert",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "discord_commands"
+				},
+				"columns": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"name": "={{ $json.name }}",
+						"workflowId": "={{ $json.workflowId }}",
+						"definition": "={{ $json.definition }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "name",
+							"displayName": "name",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "workflowId",
+							"displayName": "workflowId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "definition",
+							"displayName": "definition",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"type": "string",
+							"canBeUsedToMatch": true,
+							"readOnly": false,
+							"removed": false
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": false
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "bf634c17-f33d-48aa-a972-1ee0f6a18d44",
+			"name": "Report",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				2640,
+				400
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/syncApi.js\nconst built = $('Build').first().json;\nconst guilds = $('Guilds').all().map(function (i) {\n\treturn i.json.guildId;\n});\nreturn [{ json: syncReport(built, guilds) }];"
+			}
+		}
+	],
+	"connections": {
+		"When called by another workflow": {
+			"main": [
+				[
+					{
+						"node": "Get Workflows",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Manual Trigger": {
+			"main": [
+				[
+					{
+						"node": "Get Workflows",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Workflows": {
+			"main": [
+				[
+					{
+						"node": "Build",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Build": {
+			"main": [
+				[
+					{
+						"node": "Has Errors",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Has Errors": {
+			"main": [
+				[
+					{
+						"node": "Stop and Error",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Load Config",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Load Config": {
+			"main": [
+				[
+					{
+						"node": "Get Application",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Application": {
+			"main": [
+				[
+					{
+						"node": "Guilds",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Guilds": {
+			"main": [
+				[
+					{
+						"node": "Register",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Register": {
+			"main": [
+				[
+					{
+						"node": "Replace Table",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Replace Table": {
+			"main": [
+				[
+					{
+						"node": "Has Rows",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Has Rows": {
+			"main": [
+				[
+					{
+						"node": "Table Rows",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Report",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Table Rows": {
+			"main": [
+				[
+					{
+						"node": "Insert Rows",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Insert Rows": {
+			"main": [
+				[
+					{
+						"node": "Report",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	}
+}

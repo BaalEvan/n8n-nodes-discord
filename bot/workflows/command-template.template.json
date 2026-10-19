@@ -1,0 +1,205 @@
+{
+	"name": "Discord Command: ping",
+	"nodes": [
+		{
+			"id": "b30e249a-5132-4fcc-ad1e-0a22d039fd85",
+			"name": "When called by another workflow",
+			"type": "n8n-nodes-base.executeWorkflowTrigger",
+			"typeVersion": 1.3,
+			"position": [
+				0,
+				300
+			],
+			"parameters": {
+				"inputSource": "passthrough"
+			}
+		},
+		{
+			"id": "242a1fad-1f5c-47e5-a27a-ddf2e65b581a",
+			"name": "Command Definition",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				220,
+				300
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "{\n  \"name\": \"ping\",\n  \"description\": \"Check that the bot answers\"\n}",
+				"options": {}
+			}
+		},
+		{
+			"id": "5c8969a4-b54e-4966-a841-79672b10fcc7",
+			"name": "Switch on mode",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				440,
+				300
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "e858b576-7d9b-4de9-a40e-e21a5efc39b4",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "command",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "command"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "ec2dcc01-0322-4e4b-ab74-b4bc7e8615c7",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "autocomplete",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "autocomplete"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "10045b00-ba83-408c-ad72-39847cf8f7e5",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "component",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "component"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "fd936efe-4e4e-4997-af50-b28d112972db",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "modal",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "modal"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "48a20b7b-6751-4023-a5fe-29f1e1f56005",
+			"name": "Reply",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				680,
+				200
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "{\n  \"content\": \"pong\"\n}",
+				"options": {}
+			}
+		}
+	],
+	"connections": {
+		"When called by another workflow": {
+			"main": [
+				[
+					{
+						"node": "Command Definition",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Command Definition": {
+			"main": [
+				[
+					{
+						"node": "Switch on mode",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Switch on mode": {
+			"main": [
+				[
+					{
+						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"tags": [
+		{
+			"name": "discord-command"
+		}
+	]
+}

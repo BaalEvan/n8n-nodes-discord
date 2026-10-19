@@ -33,7 +33,8 @@
     "release": "n8n-node release",
     "prepublishOnly": "n8n-node prerelease",
     "test": "vitest run",
-    "pack:custom": "npm run build && node scripts/pack-custom.mjs"
+    "pack:custom": "npm run build && node scripts/pack-custom.mjs",
+    "build:bot": "node bot/build-workflows.mjs"
   },
   "files": [
     "dist"
