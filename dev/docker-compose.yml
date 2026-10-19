@@ -1,0 +1,13 @@
+services:
+  n8n-dev:
+    image: docker.n8n.io/n8nio/n8n:stable
+    ports:
+      - "5679:5678"
+    environment:
+      - GENERIC_TIMEZONE=Europe/Warsaw
+    volumes:
+      - n8n_dev_data:/home/node/.n8n
+      - ../release/n8n-nodes-discord-0.5.0:/home/node/.n8n/custom/n8n-nodes-discord:ro
+
+volumes:
+  n8n_dev_data:

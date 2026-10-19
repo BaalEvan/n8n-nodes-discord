@@ -32,7 +32,8 @@
     "lint:fix": "n8n-node lint --fix",
     "release": "n8n-node release",
     "prepublishOnly": "n8n-node prerelease",
-    "test": "vitest run"
+    "test": "vitest run",
+    "pack:custom": "npm run build && node scripts/pack-custom.mjs"
   },
   "files": [
     "dist"
