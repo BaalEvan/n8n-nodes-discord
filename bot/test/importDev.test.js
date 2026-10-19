@@ -93,6 +93,14 @@ describe('command templates', () => {
 		expect(ORDER.indexOf('commands/parse')).toBeLessThan(ORDER.indexOf('router'));
 	});
 
+	it('helpers are imported and published before the commands that use them', () => {
+		expect(ORDER).toContain('helpers/clickup-get-task');
+		expect(PUBLISH.has('helpers/clickup-get-task')).toBe(true);
+		expect(ORDER.indexOf('helpers/clickup-get-task')).toBeLessThan(ORDER.indexOf('commands/cl'));
+		expect(ORDER).toContain('commands/cl');
+		expect(PUBLISH.has('commands/cl')).toBe(true);
+	});
+
 	it('prepare with the discord-command tag', () => {
 		const { body, tags } = prepareWorkflow(built['commands/parse'], {
 			credentials,
@@ -100,6 +108,29 @@ describe('command templates', () => {
 		});
 		expect(tags).toEqual(['discord-command']);
 		expect(body.name).toBe('Discord Command: parse');
+	});
+});
+
+describe('optional ClickUp credential', () => {
+	const helper = () =>
+		prepareWorkflow(built['helpers/clickup-get-task'], { credentials, ownerId: OWNER });
+
+	it('keeps the name only and reports it when the credential does not exist yet', () => {
+		const { body, missing } = helper();
+		const t = body.nodes.find((n) => n.name === 'Try ClickUp (Client)');
+		expect(t.credentials).toEqual({ clickUpApi: { name: 'ClickUp (Client)' } });
+		expect(missing).toEqual(['Try ClickUp (Client): clickUpApi "ClickUp (Client)"']);
+	});
+
+	it('injects the id once the credential exists', () => {
+		const withClickUp = [...credentials, { id: 'C9', name: 'ClickUp (Client)', type: 'clickUpApi' }];
+		const { body, missing } = prepareWorkflow(built['helpers/clickup-get-task'], {
+			credentials: withClickUp,
+			ownerId: OWNER,
+		});
+		const t = body.nodes.find((n) => n.name === 'Try ClickUp (Client)');
+		expect(t.credentials).toEqual({ clickUpApi: { id: 'C9', name: 'ClickUp (Client)' } });
+		expect(missing).toEqual([]);
 	});
 });
 
@@ -151,10 +182,35 @@ describe('importDev skip', () => {
 		expect(Object.keys(result.workflows)).not.toContain('router');
 	});
 
+	it('stores the helper workflow id in discord_config', async () => {
+		const calls = stubApi();
+		await run(['router', 'sync']);
+		const upsert = calls.find(
+			(c) => c.p.endsWith('/rows/upsert') && c.body.data.key === 'clickupHelperWorkflowId',
+		);
+		expect(upsert).toBeTruthy();
+		expect(upsert.body.data.value).toMatch(/^ID\d+$/);
+		const helperSave = calls.findIndex(
+			(c) => c.method === 'POST' && c.p === '/workflows' && c.body.name === 'Discord Helper: ClickUp Get Task',
+		);
+		const clSave = calls.findIndex(
+			(c) => c.method === 'POST' && c.p === '/workflows' && c.body.name === 'Discord Command: cl',
+		);
+		expect(helperSave).toBeGreaterThan(-1);
+		expect(helperSave).toBeLessThan(clSave);
+	});
+
+	it('tags only the five command workflows, not the helper', async () => {
+		const calls = stubApi();
+		await run(['router', 'sync']);
+		const tagged = calls.filter((c) => c.method === 'PUT' && c.p.endsWith('/tags'));
+		expect(tagged).toHaveLength(5);
+	});
+
 	it('rejects an unknown key and lists the valid ones, before any request', async () => {
 		const calls = stubApi();
 		await expect(run(['routr'])).rejects.toThrow(
-			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, commands/parse, commands/preview, router',
+			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, helpers/clickup-get-task, commands/cl, commands/parse, commands/preview, router',
 		);
 		expect(calls).toEqual([]);
 	});

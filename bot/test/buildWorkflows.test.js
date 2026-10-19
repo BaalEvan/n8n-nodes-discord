@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { inlineCode, buildAll, writeAll, TEMPLATE_NAMES } from '../build-workflows.mjs';
+import {
+	inlineCode,
+	buildAll,
+	buildWorkflow,
+	writeAll,
+	TEMPLATE_NAMES,
+	parseCredentialList,
+	expandClickupChain,
+	DEFAULT_CLICKUP_CREDENTIALS,
+} from '../build-workflows.mjs';
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
@@ -122,7 +131,16 @@ describe('inlineCode', () => {
 describe('built workflows', () => {
 	it('builds the core templates and the command templates', () => {
 		expect(Object.keys(built).sort()).toEqual(
-			['command-template', 'commands/parse', 'commands/preview', 'reload-commands', 'router', 'sync'].sort(),
+			[
+				'command-template',
+				'commands/cl',
+				'commands/parse',
+				'commands/preview',
+				'helpers/clickup-get-task',
+				'reload-commands',
+				'router',
+				'sync',
+			].sort(),
 		);
 		expect(TEMPLATE_NAMES.slice().sort()).toEqual(Object.keys(built).sort());
 	});
@@ -134,6 +152,8 @@ describe('built workflows', () => {
 		expect(built['reload-commands'].name).toBe('Discord Command: reload-commands');
 		expect(built['commands/parse'].name).toBe('Discord Command: parse');
 		expect(built['commands/preview'].name).toBe('Discord Command: preview');
+		expect(built['commands/cl'].name).toBe('Discord Command: cl');
+		expect(built['helpers/clickup-get-task'].name).toBe('Discord Helper: ClickUp Get Task');
 	});
 
 	it('built workflows contain no //@inline lines', () => {
@@ -213,7 +233,7 @@ describe('built workflows', () => {
 			for (const n of wf.nodes) {
 				for (const cred of Object.values(n.credentials || {})) {
 					expect(cred, n.name).not.toHaveProperty('id');
-					expect(['Discord Bot (live)', 'n8n API'], n.name).toContain(cred.name);
+					expect(['Discord Bot (live)', 'n8n API', 'ClickUp (Client)'], n.name).toContain(cred.name);
 				}
 			}
 		}
@@ -871,14 +891,243 @@ describe('preview command', () => {
 	});
 });
 
+describe('ClickUp credential list', () => {
+	it('defaults to ClickUp (Client)', () => {
+		expect(DEFAULT_CLICKUP_CREDENTIALS).toEqual(['ClickUp (Client)']);
+		expect(parseCredentialList(undefined)).toEqual(['ClickUp (Client)']);
+		expect(parseCredentialList('')).toEqual(['ClickUp (Client)']);
+		expect(parseCredentialList(' ; ')).toEqual(['ClickUp (Client)']);
+	});
+	it('splits on ; and trims', () => {
+		expect(parseCredentialList('ClickUp (A); ClickUp (B) ;ClickUp (C);')).toEqual([
+			'ClickUp (A)',
+			'ClickUp (B)',
+			'ClickUp (C)',
+		]);
+	});
+	it('rejects duplicates', () => {
+		expect(() => parseCredentialList('A;B;A')).toThrow(/duplicate/i);
+	});
+});
+
+describe('ClickUp helper', () => {
+	const tpl = JSON.parse(templateText('helpers/clickup-get-task'));
+	const chainOf = (names) => buildWorkflow(tpl, () => '', { clickupCredentials: names });
+	const wf = built['helpers/clickup-get-task'];
+	const TRIGGER = 'When called by another workflow';
+
+	it('is not a discord-command and takes taskId', () => {
+		expect(wf.tags || []).toEqual([]);
+		const trigger = node(wf, TRIGGER);
+		expect(trigger.parameters.inputSource).toBe('workflowInputs');
+		expect(trigger.parameters.workflowInputs.values.map((v) => v.name)).toEqual(['taskId']);
+	});
+
+	it('the template holds one prototype Try node', () => {
+		expect(tpl.nodes.map((n) => n.name).filter((n) => n.startsWith('Try '))).toEqual([
+			'Try ClickUp',
+		]);
+		expect(node(tpl, 'Try ClickUp').notes).toContain('CLICKUP_CREDENTIALS');
+	});
+
+	it('expands to one Try node by default', () => {
+		const tries = wf.nodes.filter((n) => n.name.startsWith('Try '));
+		expect(tries.map((n) => n.name)).toEqual(['Try ClickUp (Client)']);
+		expect(wf.nodes.find((n) => n.name === 'Try ClickUp')).toBeUndefined();
+		expect(tries[0].credentials).toEqual({ clickUpApi: { name: 'ClickUp (Client)' } });
+		expect(targets(wf, TRIGGER)).toEqual(['Try ClickUp (Client)']);
+		expect(targets(wf, 'Try ClickUp (Client)', 0)).toEqual(['Build Embed']);
+		expect(targets(wf, 'Try ClickUp (Client)', 1)).toEqual(['Not Found']);
+	});
+
+	it('Try is a plain GET with the predefined ClickUp credential and an error output', () => {
+		const t = node(wf, 'Try ClickUp (Client)');
+		expect(t.type).toBe('n8n-nodes-base.httpRequest');
+		expect(t.onError).toBe('continueErrorOutput');
+		expect(t.parameters.method).toBe('GET');
+		expect(t.parameters.url).toBe(
+			'=https://api.clickup.com/api/v2/task/{{ encodeURIComponent($json.taskId) }}',
+		);
+		expect(t.parameters.authentication).toBe('predefinedCredentialType');
+		expect(t.parameters.nodeCredentialType).toBe('clickUpApi');
+		expect(JSON.stringify(t.parameters)).not.toMatch(/authorization/i);
+	});
+
+	it('chains three credentials in order, later ones reading the trigger', () => {
+		const c = chainOf(['ClickUp (A)', 'ClickUp (B)', 'ClickUp (C)']);
+		const names = c.nodes.map((n) => n.name).filter((n) => n.startsWith('Try '));
+		expect(names).toEqual(['Try ClickUp (A)', 'Try ClickUp (B)', 'Try ClickUp (C)']);
+		expect(new Set(c.nodes.map((n) => n.id)).size).toBe(c.nodes.length);
+		expect(targets(c, TRIGGER)).toEqual(['Try ClickUp (A)']);
+		expect(targets(c, 'Try ClickUp (A)', 0)).toEqual(['Build Embed']);
+		expect(targets(c, 'Try ClickUp (A)', 1)).toEqual(['Try ClickUp (B)']);
+		expect(targets(c, 'Try ClickUp (B)', 0)).toEqual(['Build Embed']);
+		expect(targets(c, 'Try ClickUp (B)', 1)).toEqual(['Try ClickUp (C)']);
+		expect(targets(c, 'Try ClickUp (C)', 0)).toEqual(['Build Embed']);
+		expect(targets(c, 'Try ClickUp (C)', 1)).toEqual(['Not Found']);
+		const url = (n) => node(c, n).parameters.url;
+		expect(url('Try ClickUp (A)')).toContain('$json.taskId');
+		for (const n of ['Try ClickUp (B)', 'Try ClickUp (C)']) {
+			expect(url(n)).toBe(
+				"=https://api.clickup.com/api/v2/task/{{ encodeURIComponent($('When called by another workflow').first().json.taskId) }}",
+			);
+		}
+		for (const [n, cred] of [
+			['Try ClickUp (A)', 'ClickUp (A)'],
+			['Try ClickUp (B)', 'ClickUp (B)'],
+			['Try ClickUp (C)', 'ClickUp (C)'],
+		]) {
+			expect(node(c, n).credentials).toEqual({ clickUpApi: { name: cred } });
+			expect(node(c, n).onError).toBe('continueErrorOutput');
+		}
+	});
+
+	it('expansion is pure and rejects bad input', () => {
+		const before = JSON.stringify(tpl);
+		expandClickupChain(tpl, ['X']);
+		expect(JSON.stringify(tpl)).toBe(before);
+		expect(() => expandClickupChain(tpl, [])).toThrow(/at least one/);
+		expect(() => expandClickupChain({ name: 'n', nodes: [], connections: {} }, ['X'])).toThrow(
+			/Try ClickUp/,
+		);
+	});
+
+	it('Build Embed returns found and the embed', () => {
+		const out = runCode(wf, 'Build Embed', {
+			input: [
+				{ json: { name: 'T', description: 'D', status: { status: 'open' }, url: 'https://u' } },
+			],
+		});
+		expect(out.json.found).toBe(true);
+		expect(out.json.embed.title).toBe('T');
+		expect(out.json.embed.fields[0]).toEqual({ name: 'Status', value: 'open' });
+	});
+
+	it('Not Found returns { found: false } and ends the chain', () => {
+		const nf = node(wf, 'Not Found');
+		expect(nf.type).toBe('n8n-nodes-base.set');
+		expect(JSON.parse(nf.parameters.jsonOutput)).toEqual({ found: false });
+		expect(targets(wf, 'Not Found')).toEqual([]);
+		expect(targets(wf, 'Build Embed')).toEqual([]);
+	});
+
+	it('keeps tokens and Authorization out of the helper', () => {
+		const text = JSON.stringify(wf);
+		expect(text).not.toMatch(/authorization/i);
+		expect(text).not.toMatch(/pk_\d/);
+	});
+});
+
+describe('cl command', () => {
+	const wf = built['commands/cl'];
+	const TRIGGER = 'When called by another workflow';
+	const extract = (link) =>
+		runCode(wf, 'Extract ID', {
+			nodes: { [TRIGGER]: [{ json: { mode: 'command', interaction: { options: { link } } } }] },
+		});
+
+	it('is a tagged discord-command with the recipe definition', () => {
+		expect(wf.tags.map((t) => t.name)).toEqual(['discord-command']);
+		const parsed = parseDefinition(node(wf, 'Command Definition').parameters.jsonOutput);
+		expect(parsed.ok).toBe(true);
+		expect(parsed.definition).toEqual({
+			name: 'cl',
+			description: 'Generates Clickup Embed',
+			options: [{ type: 3, name: 'link', description: 'link for Clickup', required: true }],
+			ephemeral: false,
+			whitelist: { users: [], roles: [] },
+		});
+	});
+
+	it('wires command -> Extract ID -> Has ID -> Load Helper Id -> Get Task -> Reply', () => {
+		expect(targets(wf, 'Switch on mode', 0)).toEqual(['Extract ID']);
+		expect(targets(wf, 'Extract ID')).toEqual(['Has ID']);
+		expect(targets(wf, 'Has ID', 0)).toEqual(['Load Helper Id']);
+		expect(targets(wf, 'Has ID', 1)).toEqual(['Reply Error']);
+		expect(targets(wf, 'Load Helper Id')).toEqual(['Get Task']);
+		expect(targets(wf, 'Get Task')).toEqual(['Reply']);
+		expect(targets(wf, 'Reply')).toEqual([]);
+		expect(targets(wf, 'Reply Error')).toEqual([]);
+	});
+
+	it('Load Helper Id reads clickupHelperWorkflowId from discord_config', () => {
+		const n = node(wf, 'Load Helper Id');
+		expect(n.type).toBe('n8n-nodes-base.dataTable');
+		expect(n.parameters.dataTableId.value).toBe('discord_config');
+		expect(n.parameters.filters.conditions).toEqual([
+			{ keyName: 'key', condition: 'eq', keyValue: 'clickupHelperWorkflowId' },
+		]);
+	});
+
+	it('Get Task calls the helper by the configured id, waits, and passes taskId', () => {
+		const n = node(wf, 'Get Task');
+		expect(n.type).toBe('n8n-nodes-base.executeWorkflow');
+		expect(n.parameters.source).toBe('database');
+		expect(n.parameters.workflowId.mode).toBe('id');
+		expect(n.parameters.workflowId.value).toBe("={{ $('Load Helper Id').first().json.value }}");
+		expect(n.parameters.options.waitForSubWorkflow).toBe(true);
+		expect(n.parameters.workflowInputs.value).toEqual({
+			taskId: "={{ $('Extract ID').first().json.taskId }}",
+		});
+		expect(n.onError).toBe('continueRegularOutput');
+	});
+
+	it('Extract ID handles the recipe cases', () => {
+		expect(extract('https://app.clickup.com/t/86abc123')).toEqual([
+			{ json: { taskId: '86abc123' } },
+		]);
+		expect(extract('https://app.clickup.com/t/86abc123).')).toEqual([
+			{ json: { taskId: '86abc123' } },
+		]);
+		expect(extract('https://app.clickup.com/t/123/DEV-42?x=1')).toEqual([
+			{ json: { taskId: 'DEV-42' } },
+		]);
+		expect(extract('https://example.com/abc123')).toEqual([{ json: { taskId: 'abc123' } }]);
+		expect(extract('hello')).toEqual([
+			{ json: { reply: { content: 'Could not fetch ClickUp task.' } } },
+		]);
+		expect(extract('')).toEqual([{ json: { reply: { content: 'No link provided.' } } }]);
+		expect(extract(undefined)).toEqual([{ json: { reply: { content: 'No link provided.' } } }]);
+	});
+
+	it('Has ID tests taskId for non-empty and Reply Error emits the reply', () => {
+		const cond = node(wf, 'Has ID').parameters.conditions.conditions[0];
+		expect(cond.leftValue).toBe("={{ $json.taskId || '' }}");
+		expect(cond.operator).toMatchObject({ type: 'string', operation: 'notEmpty' });
+		expect(node(wf, 'Reply Error').parameters.jsonOutput).toBe(
+			'={{ JSON.stringify($json.reply) }}',
+		);
+	});
+
+	it('Reply returns the embed, or the error text', () => {
+		const embed = { title: 'T' };
+		expect(runCode(wf, 'Reply', { input: [{ json: { found: true, embed } }] })).toEqual([
+			{ json: { embeds: [embed] } },
+		]);
+		expect(runCode(wf, 'Reply', { input: [{ json: { found: false } }] })).toEqual([
+			{ json: { content: 'Could not fetch ClickUp task.' } },
+		]);
+		expect(runCode(wf, 'Reply', { input: [{ json: { key: 'x', value: '' } }] })).toEqual([
+			{ json: { content: 'Could not fetch ClickUp task.' } },
+		]);
+	});
+
+	it('has no Discord nodes and no unresolved inline marker', () => {
+		expect(wf.nodes.filter((n) => n.type.startsWith('CUSTOM.'))).toEqual([]);
+		for (const n of codeNodes(wf)) expect(n.parameters.jsCode).not.toContain('//@inline');
+	});
+});
+
 describe('writeAll', () => {
 	it('writes one importable JSON file per template', () => {
 		const out = fs.mkdtempSync(path.join(os.tmpdir(), 'bot-dist-'));
 		const files = writeAll(BOT_DIR, out);
 		expect(files.map((f) => path.relative(out, f).split(path.sep).join('/')).sort()).toEqual([
 			'command-template.json',
+			'commands/cl.json',
 			'commands/parse.json',
 			'commands/preview.json',
+			'helpers/clickup-get-task.json',
 			'reload-commands.json',
 			'router.json',
 			'sync.json',

@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { commandTemplateNames } from './build-workflows.mjs';
+import { commandTemplateNames, helperTemplateNames } from './build-workflows.mjs';
 
 export const TABLES = {
 	discord_commands: ['name', 'workflowId', 'definition'],
@@ -17,22 +17,32 @@ export const DEV_DEFAULTS = {
 
 export const COMMAND_TAG = 'discord-command';
 const OWNER_PLACEHOLDER = '__OWNER_ID__';
+const BOT_DIR = path.dirname(fileURLToPath(import.meta.url));
 export const ORDER = [
 	'sync',
 	'command-template',
 	'reload-commands',
-	...commandTemplateNames(path.dirname(fileURLToPath(import.meta.url))),
+	...helperTemplateNames(BOT_DIR),
+	...commandTemplateNames(BOT_DIR),
 	'router',
 ];
+export const HELPER_CONFIG_KEYS = { 'helpers/clickup-get-task': 'clickupHelperWorkflowId' };
+const OPTIONAL_CREDENTIAL_TYPES = new Set(['clickUpApi']);
 export const PUBLISH = new Set(ORDER.filter((key) => key !== 'router'));
 
 export function prepareWorkflow(wf, { credentials, ownerId }) {
 	const out = structuredClone(wf);
+	const missing = [];
 	const tags = (out.tags || []).map((t) => t.name);
 	delete out.tags;
 	for (const node of out.nodes) {
 		for (const [type, ref] of Object.entries(node.credentials || {})) {
 			const match = credentials.find((c) => c.name === ref.name && c.type === type);
+			if (!match && OPTIONAL_CREDENTIAL_TYPES.has(type)) {
+				node.credentials[type] = { name: ref.name };
+				missing.push(`${node.name}: ${type} "${ref.name}"`);
+				continue;
+			}
 			if (!match)
 				throw new Error(`${out.name} / ${node.name}: no ${type} credential named "${ref.name}"`);
 			node.credentials[type] = { id: match.id, name: match.name };
@@ -50,6 +60,7 @@ export function prepareWorkflow(wf, { credentials, ownerId }) {
 	}
 	return {
 		tags,
+		missing,
 		body: {
 			name: out.name,
 			nodes: out.nodes,
@@ -213,7 +224,9 @@ export async function importDev({
 			continue;
 		}
 		const wf = JSON.parse(fs.readFileSync(path.join(distDir, `${key}.json`), 'utf8'));
-		const { tags, body } = prepareWorkflow(wf, { credentials, ownerId });
+		const { tags, body, missing } = prepareWorkflow(wf, { credentials, ownerId });
+		for (const m of missing)
+			log(`warning: credential not found on this n8n, referenced by name only: ${m}`);
 		const same = existing.filter((w) => w.name === body.name);
 		if (same.length > 1)
 			throw new Error(
@@ -242,6 +255,8 @@ export async function importDev({
 		});
 		if (tagIds.length) await api.call('PUT', `/workflows/${saved.id}/tags`, tagIds);
 		if (key === 'sync') await upsertConfig(api, cfgTable, 'syncWorkflowId', saved.id);
+		if (HELPER_CONFIG_KEYS[key])
+			await upsertConfig(api, cfgTable, HELPER_CONFIG_KEYS[key], saved.id);
 		const publish = PUBLISH.has(key) && state !== 'unchanged';
 		if (publish) await api.call('POST', `/workflows/${saved.id}/publish`, {});
 		result[key] = { id: saved.id, name: body.name, state, published: PUBLISH.has(key) };
@@ -274,7 +289,8 @@ if (process.argv[1] && import.meta.url === pathToFileURL(path.resolve(process.ar
 		skip: (process.env.IMPORT_SKIP || '').split(',').filter(Boolean),
 	})
 		.then((r) => {
-			if (r.workflows.router) console.log(`Discord Router (not published): ${r.workflows.router.id}`);
+			if (r.workflows.router)
+				console.log(`Discord Router (not published): ${r.workflows.router.id}`);
 			console.log(`discord_config: ${JSON.stringify(r.config)}`);
 		})
 		.catch((error) => {

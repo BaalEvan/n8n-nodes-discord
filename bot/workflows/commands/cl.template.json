@@ -1,0 +1,393 @@
+{
+	"name": "Discord Command: cl",
+	"nodes": [
+		{
+			"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e0f01",
+			"name": "When called by another workflow",
+			"type": "n8n-nodes-base.executeWorkflowTrigger",
+			"typeVersion": 1.3,
+			"position": [
+				0,
+				300
+			],
+			"parameters": {
+				"inputSource": "passthrough"
+			}
+		},
+		{
+			"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e0f02",
+			"name": "Command Definition",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				220,
+				300
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "{\n  \"name\": \"cl\",\n  \"description\": \"Generates Clickup Embed\",\n  \"options\": [\n    {\n      \"type\": 3,\n      \"name\": \"link\",\n      \"description\": \"link for Clickup\",\n      \"required\": true\n    }\n  ],\n  \"ephemeral\": false,\n  \"whitelist\": {\n    \"users\": [],\n    \"roles\": []\n  }\n}",
+				"options": {}
+			}
+		},
+		{
+			"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e0f03",
+			"name": "Switch on mode",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				440,
+				300
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e100",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "command",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "command"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e110",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "autocomplete",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "autocomplete"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e120",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "component",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "component"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e130",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "modal",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "modal"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e0f04",
+			"name": "Extract ID",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				660,
+				200
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/clickup.js\nconst link = $('When called by another workflow').first().json.interaction?.options?.link;\nif (!String(link ?? '').trim()) return [{ json: { reply: { content: NO_LINK } } }];\nconst taskId = extractTaskId(link);\nif (!taskId) return [{ json: { reply: { content: NOT_FETCHED } } }];\nreturn [{ json: { taskId } }];"
+			}
+		},
+		{
+			"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e0f05",
+			"name": "Has ID",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				880,
+				200
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e0f15",
+							"leftValue": "={{ $json.taskId || '' }}",
+							"rightValue": "",
+							"operator": {
+								"type": "string",
+								"operation": "notEmpty",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e0f06",
+			"name": "Reply Error",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				1100,
+				400
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify($json.reply) }}",
+				"options": {}
+			}
+		},
+		{
+			"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e0f07",
+			"name": "Load Helper Id",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				1100,
+				100
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "discord_config"
+				},
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "key",
+							"condition": "eq",
+							"keyValue": "clickupHelperWorkflowId"
+						}
+					]
+				},
+				"limit": 1
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e0f08",
+			"name": "Get Task",
+			"type": "n8n-nodes-base.executeWorkflow",
+			"typeVersion": 1.4,
+			"position": [
+				1320,
+				100
+			],
+			"parameters": {
+				"source": "database",
+				"workflowId": {
+					"__rl": true,
+					"mode": "id",
+					"value": "={{ $('Load Helper Id').first().json.value }}"
+				},
+				"workflowInputs": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"taskId": "={{ $('Extract ID').first().json.taskId }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "taskId",
+							"displayName": "taskId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				},
+				"mode": "once",
+				"options": {
+					"waitForSubWorkflow": true
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "d1e2f3a4-2b3c-4d4e-9f50-6b7c8d9e0f09",
+			"name": "Reply",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1540,
+				100
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/clickup.js\nconst result = $input.first().json;\nreturn [{ json: result.found && result.embed ? { embeds: [result.embed] } : { content: NOT_FETCHED } }];"
+			}
+		}
+	],
+	"connections": {
+		"When called by another workflow": {
+			"main": [
+				[
+					{
+						"node": "Command Definition",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Command Definition": {
+			"main": [
+				[
+					{
+						"node": "Switch on mode",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Switch on mode": {
+			"main": [
+				[
+					{
+						"node": "Extract ID",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Extract ID": {
+			"main": [
+				[
+					{
+						"node": "Has ID",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Has ID": {
+			"main": [
+				[
+					{
+						"node": "Load Helper Id",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply Error",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Load Helper Id": {
+			"main": [
+				[
+					{
+						"node": "Get Task",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Get Task": {
+			"main": [
+				[
+					{
+						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"tags": [
+		{
+			"name": "discord-command"
+		}
+	]
+}
