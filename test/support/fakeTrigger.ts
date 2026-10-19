@@ -8,12 +8,14 @@ export interface FakeTriggerOptions {
 	nodeId?: string;
 	token?: string;
 	failGatewayBotTimes?: number;
+	staticData?: IDataObject;
 }
 
 export interface FakeTrigger extends ITriggerFunctions {
 	emitted: IDataObject[];
 	errors: Error[];
 	rest: Array<{ method: string; url: string; body?: unknown }>;
+	staticData: IDataObject;
 }
 
 const DEFAULT_PARAMS: Record<string, unknown> = {
@@ -27,13 +29,14 @@ const DEFAULT_PARAMS: Record<string, unknown> = {
 
 export function createFakeTrigger(opts: FakeTriggerOptions): FakeTrigger {
 	const params = { ...DEFAULT_PARAMS, ...opts.params };
-	const staticData: IDataObject = {};
+	const staticData: IDataObject = opts.staticData ?? {};
 	let gatewayFailures = opts.failGatewayBotTimes ?? 0;
 
 	const trigger = {
 		emitted: [] as IDataObject[],
 		errors: [] as Error[],
 		rest: [] as Array<{ method: string; url: string; body?: unknown }>,
+		staticData,
 		getCredentials: async () => ({ botToken: opts.token ?? 'test-token' }),
 		getNodeParameter: (name: string, fallback?: unknown) =>
 			name in params ? params[name] : fallback,

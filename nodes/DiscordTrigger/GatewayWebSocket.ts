@@ -1,6 +1,7 @@
 import { ApplicationError, LoggerProxy, sleep, type IDataObject } from 'n8n-workflow';
 
 import { getCloseCodeMeta } from './closeCodes';
+import { FatalGatewayError } from './errors';
 
 const OPCODE_DISPATCH = 0;
 const OPCODE_HEARTBEAT = 1;
@@ -11,16 +12,34 @@ const OPCODE_INVALID_SESSION = 9;
 const OPCODE_HELLO = 10;
 const OPCODE_HEARTBEAT_ACK = 11;
 
+// Any close code other than 1000/1001 keeps the session resumable on Discord's side.
+const RECONNECT_CLOSE_CODE = 4900;
+const NEW_SESSION_CLOSE_CODES = [4007, 4009];
+
 type EventHandler = (eventName: string, data: IDataObject, raw: IDataObject) => void;
-type DisconnectHandler = (canResume: boolean) => void;
+
+export interface DisconnectInfo {
+	canResume: boolean;
+	fatal?: { code: number; name: string; description: string };
+}
+
+type DisconnectHandler = (info: DisconnectInfo) => void;
+
+export interface GatewayResumeState {
+	sessionId?: string;
+	sequence?: number;
+	resumeGatewayUrl?: string;
+}
 
 interface GatewayIdentifyOptions {
 	token: string;
 	intents: number;
-	resumeState?: {
-		sessionId?: string;
-		sequence?: number;
-	};
+	resumeState?: GatewayResumeState;
+	onIdentify?: () => void;
+}
+
+export interface GatewayWebSocketOptions {
+	random?: () => number;
 }
 
 export class GatewayWebSocket {
@@ -31,17 +50,24 @@ export class GatewayWebSocket {
 	private sessionId: string | null = null;
 	private resumeGatewayUrl: string | null = null;
 	private closing = false;
+	private ready = false;
 	private pendingConnectReject: ((error: Error) => void) | null = null;
+	private readonly random: () => number;
 
 	constructor(
 		private readonly gatewayUrl: string,
 		private readonly workflowId: string,
 		private readonly onEvent: EventHandler,
 		private readonly onDisconnect: DisconnectHandler,
-	) {}
+		options: GatewayWebSocketOptions = {},
+	) {
+		this.random = options.random ?? Math.random;
+	}
 
 	async connect(options: GatewayIdentifyOptions): Promise<void> {
-		const url = `${this.gatewayUrl}?v=10&encoding=json`;
+		const resuming = this.adoptResumeState(options.resumeState);
+		const baseUrl = resuming ? (this.resumeGatewayUrl ?? this.gatewayUrl) : this.gatewayUrl;
+		const url = `${baseUrl}?v=10&encoding=json`;
 
 		return new Promise((resolve, reject) => {
 			let settled = false;
@@ -71,7 +97,7 @@ export class GatewayWebSocket {
 				this.ws.onmessage = (event: MessageEvent) => {
 					try {
 						const payload = JSON.parse(event.data as string) as IDataObject;
-						this.handlePayload(payload, options, settleResolve);
+						this.handlePayload(payload, options, resuming, settleResolve);
 					} catch (error) {
 						LoggerProxy.error('Failed to handle Discord Gateway payload', {
 							error: error instanceof Error ? error.message : String(error),
@@ -90,28 +116,35 @@ export class GatewayWebSocket {
 					this.stopHeartbeat();
 					const code = event.code;
 					const meta = getCloseCodeMeta(code);
+					const fatal = meta !== undefined && !meta.reconnect;
+					if (fatal || NEW_SESSION_CLOSE_CODES.includes(code)) {
+						this.clearSession();
+					}
 
-					if (!settled) {
+					if (!this.ready) {
 						// Connection closed before READY arrived — surface a clear error
 						// instead of hanging the trigger awaiting a Promise that never resolves.
+						if (fatal) {
+							settleReject(new FatalGatewayError(code));
+							return;
+						}
 						const reason = meta
 							? `${meta.name}: ${meta.description}`
 							: event.reason || 'connection closed before READY';
-						const hint = meta && !meta.reconnect
-							? ' This close code is non-recoverable; check the bot token, enabled intents, and Developer Portal settings.'
-							: '';
 						settleReject(
-							new ApplicationError(
-								`Discord Gateway closed with code ${code} (${reason}).${hint}`,
-							),
+							new ApplicationError(`Discord Gateway closed with code ${code} (${reason}).`),
 						);
 						return;
 					}
 
 					if (this.closing) return;
+					this.closing = true;
 
-					const canResume = this.sessionId !== null && (meta?.reconnect ?? true);
-					this.onDisconnect(canResume);
+					const info: DisconnectInfo = { canResume: this.sessionId !== null };
+					if (fatal) {
+						info.fatal = { code, name: meta.name, description: meta.description };
+					}
+					this.onDisconnect(info);
 				};
 			} catch (error) {
 				settleReject(error instanceof Error ? error : new ApplicationError(String(error)));
@@ -119,7 +152,7 @@ export class GatewayWebSocket {
 		});
 	}
 
-	async close(): Promise<void> {
+	async close(code = 1000): Promise<void> {
 		this.closing = true;
 		this.stopHeartbeat();
 
@@ -158,7 +191,7 @@ export class GatewayWebSocket {
 			ws.onclose = finish;
 
 			try {
-				ws.close();
+				ws.close(code);
 			} catch {
 				finish();
 				return;
@@ -187,9 +220,26 @@ export class GatewayWebSocket {
 		this.ws.send(JSON.stringify(payload));
 	}
 
+	private adoptResumeState(resumeState: GatewayResumeState | undefined): boolean {
+		if (!resumeState?.sessionId || typeof resumeState.sequence !== 'number') {
+			return false;
+		}
+		this.sessionId = resumeState.sessionId;
+		this.sequence = resumeState.sequence;
+		this.resumeGatewayUrl = resumeState.resumeGatewayUrl ?? null;
+		return true;
+	}
+
+	private clearSession(): void {
+		this.sessionId = null;
+		this.sequence = null;
+		this.resumeGatewayUrl = null;
+	}
+
 	private handlePayload(
 		payload: IDataObject,
 		options: GatewayIdentifyOptions,
+		resuming: boolean,
 		resolve: () => void,
 	): void {
 		if (this.closing) {
@@ -205,7 +255,7 @@ export class GatewayWebSocket {
 		if (op === OPCODE_HELLO) {
 			const data = payload.d as IDataObject;
 			this.startHeartbeat(data.heartbeat_interval as number);
-			this.identifyOrResume(options);
+			this.identifyOrResume(options, resuming);
 			return;
 		}
 
@@ -220,12 +270,21 @@ export class GatewayWebSocket {
 		}
 
 		if (op === OPCODE_RECONNECT) {
-			this.requestReconnect(this.sessionId !== null);
+			this.requestReconnect(
+				{ canResume: this.sessionId !== null },
+				'Discord Gateway requested a reconnect',
+			);
 			return;
 		}
 
 		if (op === OPCODE_INVALID_SESSION) {
-			this.requestReconnect(payload.d === true);
+			if (payload.d !== true) {
+				this.clearSession();
+			}
+			this.requestReconnect(
+				{ canResume: this.sessionId !== null },
+				'Discord Gateway invalidated the session',
+			);
 			return;
 		}
 
@@ -236,8 +295,10 @@ export class GatewayWebSocket {
 			if (eventName === 'READY') {
 				this.sessionId = data.session_id as string;
 				this.resumeGatewayUrl = data.resume_gateway_url as string;
+				this.ready = true;
 				resolve();
 			} else if (eventName === 'RESUMED') {
+				this.ready = true;
 				resolve();
 			}
 
@@ -245,19 +306,20 @@ export class GatewayWebSocket {
 		}
 	}
 
-	private identifyOrResume(options: GatewayIdentifyOptions): void {
-		if (options.resumeState?.sessionId && typeof options.resumeState.sequence === 'number') {
+	private identifyOrResume(options: GatewayIdentifyOptions, resuming: boolean): void {
+		if (resuming) {
 			this.send({
 				op: OPCODE_RESUME,
 				d: {
 					token: options.token,
-					session_id: options.resumeState.sessionId,
-					seq: options.resumeState.sequence,
+					session_id: this.sessionId,
+					seq: this.sequence,
 				},
 			});
 			return;
 		}
 
+		options.onIdentify?.();
 		this.send({
 			op: OPCODE_IDENTIFY,
 			d: {
@@ -276,33 +338,48 @@ export class GatewayWebSocket {
 		this.stopHeartbeat();
 		this.heartbeatAcked = true;
 		const epoch = ++this.heartbeatEpoch;
-		const runHeartbeatLoop = async () => {
-			await sleep(interval);
-			if (this.closing || epoch !== this.heartbeatEpoch) {
-				return;
+		const runHeartbeatLoop = async (): Promise<void> => {
+			let delay = interval * this.random();
+			while (true) {
+				await sleep(delay);
+				if (this.closing || epoch !== this.heartbeatEpoch) {
+					return;
+				}
+				if (!this.heartbeatAcked) {
+					LoggerProxy.warn('Discord Gateway heartbeat ACK not received, reconnecting', {
+						workflowId: this.workflowId,
+						nodeType: 'n8n-nodes-discord.discordTrigger',
+					});
+					this.requestReconnect(
+						{ canResume: this.sessionId !== null },
+						'Discord Gateway heartbeat ACK not received',
+					);
+					return;
+				}
+				this.sendHeartbeat();
+				delay = interval;
 			}
-			if (!this.heartbeatAcked) {
-				LoggerProxy.warn('Discord Gateway heartbeat ACK not received, reconnecting', {
-					workflowId: this.workflowId,
-					nodeType: 'n8n-nodes-discord.discordTrigger',
-				});
-				this.requestReconnect(this.sessionId !== null);
-				return;
-			}
-			this.sendHeartbeat();
-			void runHeartbeatLoop();
 		};
-		this.sendHeartbeat();
-		void runHeartbeatLoop();
+		runHeartbeatLoop().catch((error) => {
+			LoggerProxy.error('Discord Gateway heartbeat failed', {
+				error: error instanceof Error ? error.message : String(error),
+				workflowId: this.workflowId,
+				nodeType: 'n8n-nodes-discord.discordTrigger',
+			});
+		});
 	}
 
 	private stopHeartbeat(): void {
 		this.heartbeatEpoch++;
 	}
 
-	private requestReconnect(canResume: boolean): void {
-		void this.close();
-		this.onDisconnect(canResume);
+	private requestReconnect(info: DisconnectInfo, reason: string): void {
+		const wasReady = this.ready;
+		this.pendingConnectReject?.(new ApplicationError(reason));
+		void this.close(RECONNECT_CLOSE_CODE);
+		if (wasReady) {
+			this.onDisconnect(info);
+		}
 	}
 
 	private sendHeartbeat(): void {

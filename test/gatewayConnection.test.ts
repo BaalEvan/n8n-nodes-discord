@@ -1,0 +1,232 @@
+import { LoggerProxy, NodeOperationError, sleep, type IDataObject } from 'n8n-workflow';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+
+import {
+	DiscordGatewayConnection,
+	type DiscordGatewayConnectionOptions,
+} from '../nodes/DiscordTrigger/DiscordGatewayConnection';
+import { FatalGatewayError } from '../nodes/DiscordTrigger/errors';
+import { IdentifyBudget } from '../nodes/DiscordTrigger/reconnectPolicy';
+import { PACKAGE_VERSION } from '../nodes/DiscordTrigger/version';
+import { FakeGateway } from './support/fakeGateway';
+import {
+	createFakeTrigger,
+	type FakeTrigger,
+	type FakeTriggerOptions,
+} from './support/fakeTrigger';
+
+const backoff = { baseDelayMs: 10, maxDelayMs: 50, random: () => 0.5 };
+const noop = () => {};
+
+describe('DiscordGatewayConnection', () => {
+	let gateway: FakeGateway;
+	let connections: DiscordGatewayConnection[];
+
+	beforeEach(() => {
+		gateway = new FakeGateway();
+		connections = [];
+	});
+
+	afterEach(async () => {
+		LoggerProxy.init({ error: noop, warn: noop, info: noop, debug: noop } as never);
+		for (const connection of connections) await connection.close();
+		await gateway.stop();
+	});
+
+	function create(
+		trigger: FakeTrigger,
+		options: DiscordGatewayConnectionOptions = {},
+	): DiscordGatewayConnection {
+		const connection = new DiscordGatewayConnection(
+			trigger,
+			'*',
+			(data) => trigger.emitted.push(data),
+			{ backoff, ...options },
+		);
+		connections.push(connection);
+		return connection;
+	}
+
+	async function setup(
+		triggerOptions: Partial<FakeTriggerOptions> = {},
+		options: DiscordGatewayConnectionOptions = {},
+	) {
+		const url = await gateway.start();
+		const trigger = createFakeTrigger({ gatewayUrl: url, ...triggerOptions });
+		return { trigger, connection: create(trigger, options) };
+	}
+
+	const countOp = (op: number) =>
+		gateway.connections.reduce(
+			(total, connection) => total + connection.received.filter((m) => m.op === op).length,
+			0,
+		);
+
+	const emittedEvents = (trigger: FakeTrigger) => trigger.emitted.map((item) => item.event);
+
+	async function forceResumeViaAckLoss(trigger: FakeTrigger) {
+		await expect.poll(() => trigger.staticData.sessionId).toBe('sess-1');
+		gateway.ackHeartbeats = false;
+		await expect.poll(() => gateway.connections.length).toBeGreaterThanOrEqual(2);
+		gateway.ackHeartbeats = true;
+		return gateway.connections[1];
+	}
+
+	it('reconnects past five failures', async () => {
+		const { trigger, connection } = await setup({ failGatewayBotTimes: 8 });
+		await connection.start();
+		await expect.poll(() => gateway.connections.length, { timeout: 2000 }).toBe(1);
+		await expect.poll(() => countOp(2), { timeout: 2000 }).toBe(1);
+		expect(trigger.rest.filter((r) => r.url.endsWith('/gateway/bot')).length).toBe(9);
+	});
+
+	it('start() resolves when the gateway is unreachable at activation', async () => {
+		const { trigger, connection } = await setup({ failGatewayBotTimes: 3 });
+		await expect(connection.start()).resolves.toBeUndefined();
+		await expect.poll(() => trigger.staticData.sessionId).toBe('sess-1');
+		expect(gateway.connections.length).toBe(1);
+	});
+
+	it('heartbeat ACK loss resumes on resume_gateway_url', async () => {
+		const { trigger, connection } = await setup();
+		await connection.start();
+		const resumed = await forceResumeViaAckLoss(trigger);
+		expect(resumed.path).toBe('/resume');
+		await expect
+			.poll(() => resumed.received.find((m) => m.op === 6)?.d)
+			.toMatchObject({ session_id: 'sess-1' });
+		await expect.poll(() => gateway.connections[0].closeCode).toBe(4900);
+	});
+
+	it('session id survives RESUMED', async () => {
+		const { trigger, connection } = await setup();
+		await connection.start();
+		await forceResumeViaAckLoss(trigger);
+		await expect.poll(() => emittedEvents(trigger)).toContain('RESUMED');
+		gateway.dispatch('MESSAGE_CREATE', {});
+		await expect.poll(() => emittedEvents(trigger)).toContain('MESSAGE_CREATE');
+		const staticData = trigger.getWorkflowStaticData('node');
+		expect(staticData.sessionId).toBe('sess-1');
+		expect(staticData.resumeGatewayUrl).toMatch(/\/resume$/);
+	});
+
+	it('op 7 triggers resume', async () => {
+		const { connection } = await setup();
+		await connection.start();
+		gateway.sendToAll({ op: 7, d: null });
+		await expect.poll(() => gateway.connections.length).toBe(2);
+		const resumed = gateway.connections[1];
+		expect(resumed.path).toBe('/resume');
+		await expect
+			.poll(() => resumed.received.find((m) => m.op === 6)?.d)
+			.toMatchObject({ session_id: 'sess-1' });
+		expect(resumed.received.some((m) => m.op === 2)).toBe(false);
+	});
+
+	it('INVALID_SESSION false identifies fresh', async () => {
+		const { trigger, connection } = await setup();
+		await connection.start();
+		gateway.onResume = 'invalid';
+		gateway.sendToAll({ op: 7, d: null });
+		await expect.poll(() => gateway.connections.length).toBeGreaterThanOrEqual(3);
+		const [, resumeAttempt, fresh] = gateway.connections;
+		expect(resumeAttempt.path).toBe('/resume');
+		expect(resumeAttempt.received.some((m) => m.op === 6)).toBe(true);
+		await expect.poll(() => fresh.received.some((m) => m.op === 2)).toBe(true);
+		expect(fresh.received.some((m) => m.op === 6)).toBe(false);
+		expect(fresh.path).toBe('/');
+		await expect.poll(() => trigger.staticData.sessionId).toBe('sess-2');
+	});
+
+	it('stale saved session from an older build', async () => {
+		const { trigger, connection } = await setup({ staticData: { sessionId: 'old', sequence: 5 } });
+		gateway.onResume = 'invalid';
+		await connection.start();
+		await expect.poll(() => trigger.staticData.sessionId).toBe('sess-1');
+		const [stale] = gateway.connections;
+		expect(stale.path).toBe('/');
+		expect(stale.received.find((m) => m.op === 6)?.d).toMatchObject({ session_id: 'old', seq: 5 });
+		gateway.dispatch('MESSAGE_CREATE', {});
+		await expect.poll(() => emittedEvents(trigger)).toContain('MESSAGE_CREATE');
+	});
+
+	it('fatal code before READY rejects', async () => {
+		const { connection } = await setup();
+		gateway.onIdentify = { closeWith: 4004 };
+		const error = await connection.start().catch((e: unknown) => e);
+		expect(error).toBeInstanceOf(FatalGatewayError);
+		expect((error as FatalGatewayError).closeCode).toBe(4004);
+	});
+
+	it('fatal code after READY stops for good', async () => {
+		const { trigger, connection } = await setup();
+		await connection.start();
+		gateway.closeAll(4014);
+		await expect.poll(() => trigger.errors.length).toBe(1);
+		await sleep(300);
+		expect(gateway.connections.length).toBe(1);
+		expect(trigger.errors.length).toBe(1);
+		expect(trigger.errors[0]).toBeInstanceOf(NodeOperationError);
+		expect(trigger.errors[0].message).toContain('4014');
+	});
+
+	it('deliberate close clears session and closes 1000', async () => {
+		const { trigger, connection } = await setup();
+		await connection.start();
+		expect(trigger.staticData.sessionId).toBe('sess-1');
+		await connection.close();
+		await expect.poll(() => gateway.connections[0].closeCode).toBe(1000);
+		expect(trigger.staticData).not.toHaveProperty('sessionId');
+		expect(trigger.staticData).not.toHaveProperty('sequence');
+		expect(trigger.staticData).not.toHaveProperty('resumeGatewayUrl');
+
+		await create(trigger).start();
+		await expect.poll(() => gateway.connections.length).toBe(2);
+		const next = gateway.connections[1];
+		expect(next.received.some((m) => m.op === 2)).toBe(true);
+		expect(next.received.some((m) => m.op === 6)).toBe(false);
+	});
+
+	it('first heartbeat is jittered', async () => {
+		const { connection } = await setup();
+		gateway.heartbeatIntervalMs = 200;
+		await connection.start();
+		const [first] = gateway.connections;
+		await expect.poll(() => first.received.findIndex((m) => m.op === 1)).toBeGreaterThanOrEqual(0);
+		const index = first.received.findIndex((m) => m.op === 1);
+		expect(first.receivedAt[index] - first.helloAt).toBeGreaterThanOrEqual(90);
+	});
+
+	it('identify budget pauses identifies', async () => {
+		const { connection } = await setup({}, { identifyBudget: new IdentifyBudget(3) });
+		gateway.onIdentify = { closeWith: 4003 };
+		await connection.start();
+		await sleep(1000);
+		expect(countOp(2)).toBe(3);
+	});
+
+	it('logs the package version on READY and RESUMED', async () => {
+		const logs: Array<{ message: string; meta: IDataObject }> = [];
+		LoggerProxy.init({
+			error: noop,
+			warn: noop,
+			debug: noop,
+			info: (message: string, meta: IDataObject) => logs.push({ message, meta }),
+		} as never);
+		const { connection } = await setup();
+		await connection.start();
+		const connected = () => logs.filter((l) => l.message === 'Discord Gateway connected');
+		expect(connected()[0].meta).toMatchObject({
+			version: PACKAGE_VERSION,
+			sessionId: 'sess-1',
+			resumed: false,
+		});
+		gateway.sendToAll({ op: 7, d: null });
+		await expect.poll(() => connected().length).toBe(2);
+		expect(connected()[1].meta).toMatchObject({
+			version: PACKAGE_VERSION,
+			sessionId: 'sess-1',
+			resumed: true,
+		});
+	});
+});

@@ -3,6 +3,8 @@ import { WebSocket, WebSocketServer } from 'ws';
 interface FakeConnection {
 	path: string;
 	received: Array<{ op: number; d: unknown }>;
+	receivedAt: number[];
+	helloAt: number;
 	closeCode?: number;
 }
 
@@ -50,7 +52,12 @@ export class FakeGateway {
 	}
 
 	private accept(socket: WebSocket, url: string): void {
-		const connection: FakeConnection = { path: new URL(url, 'ws://x').pathname, received: [] };
+		const connection: FakeConnection = {
+			path: new URL(url, 'ws://x').pathname,
+			received: [],
+			receivedAt: [],
+			helloAt: 0,
+		};
 		this.connections.push(connection);
 		this.sockets.add(socket);
 
@@ -61,9 +68,11 @@ export class FakeGateway {
 		socket.on('message', (raw) => {
 			const message = JSON.parse(raw.toString()) as { op: number; d: unknown };
 			connection.received.push(message);
+			connection.receivedAt.push(Date.now());
 			this.handle(socket, message);
 		});
 
+		connection.helloAt = Date.now();
 		this.send(socket, { op: 10, d: { heartbeat_interval: this.heartbeatIntervalMs } });
 	}
 

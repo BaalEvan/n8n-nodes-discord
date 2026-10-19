@@ -1,25 +1,84 @@
-import { LoggerProxy, sleep, type IDataObject, type ITriggerFunctions } from 'n8n-workflow';
+import {
+	ApplicationError,
+	LoggerProxy,
+	NodeOperationError,
+	sleep,
+	type IDataObject,
+	type ITriggerFunctions,
+} from 'n8n-workflow';
 
 import { DISCORD_API_BASE_URL } from '../Discord/shared/constants';
 import { calculateIntents } from '../Discord/shared/intents';
+import type { AlertSink } from './alerts';
+import { FatalGatewayError } from './errors';
 import { shouldEmitGatewayEvent } from './events/policies';
-import { GatewayWebSocket } from './GatewayWebSocket';
+import { GatewayWebSocket, type DisconnectInfo, type GatewayResumeState } from './GatewayWebSocket';
+import {
+	DEFAULT_BACKOFF,
+	IdentifyBudget,
+	nextReconnectDelay,
+	type BackoffOptions,
+} from './reconnectPolicy';
+import { PACKAGE_VERSION } from './version';
 
-const MAX_RECONNECT_ATTEMPTS = 5;
-const BASE_RECONNECT_DELAY_MS = 1000;
+const NODE_TYPE = 'n8n-nodes-discord.discordTrigger';
+const SESSION_KEYS = ['sessionId', 'sequence', 'resumeGatewayUrl'];
+const MAX_WAIT_STEP_MS = 1000;
+
+export interface DiscordGatewayConnectionOptions {
+	backoff?: BackoffOptions;
+	identifyBudget?: IdentifyBudget;
+	alertSink?: AlertSink;
+	alertAfterMs?: number;
+	outageCheckMs?: number;
+	now?: () => number;
+}
 
 export class DiscordGatewayConnection {
 	private ws: GatewayWebSocket | null = null;
 	private closing = false;
 	private reconnectAttempts = 0;
+	private readonly backoff: BackoffOptions;
+	private readonly identifyBudget: IdentifyBudget;
 
 	constructor(
 		private readonly trigger: ITriggerFunctions,
 		private readonly event: string,
 		private readonly onEvent: (data: IDataObject) => void,
-	) {}
+		options: DiscordGatewayConnectionOptions = {},
+	) {
+		this.backoff = options.backoff ?? DEFAULT_BACKOFF;
+		this.identifyBudget = options.identifyBudget ?? new IdentifyBudget();
+	}
 
-	async connect(): Promise<void> {
+	async start(): Promise<void> {
+		await this.connectOnce().catch((error: unknown) => {
+			if (error instanceof FatalGatewayError) {
+				this.closing = true;
+				this.clearSessionState();
+				throw error;
+			}
+			this.handleConnectFailure(error);
+		});
+	}
+
+	async close(): Promise<void> {
+		this.closing = true;
+		this.clearSessionState();
+		const ws = this.ws;
+		if (ws) {
+			await ws.close(1000);
+		}
+	}
+
+	sendCommand(payload: { op: number; d: unknown }): void {
+		if (!this.ws) {
+			throw new Error('Discord Gateway connection is not established');
+		}
+		this.ws.sendCommand(payload);
+	}
+
+	private async connectOnce(): Promise<void> {
 		if (this.closing) return;
 
 		const credentials = await this.trigger.getCredentials('discordGatewayBotApi');
@@ -30,43 +89,115 @@ export class DiscordGatewayConnection {
 			: (this.trigger.getNodeParameter('intents') as string[]);
 		const intents = calculateIntents(this.event, selectedIntents);
 
-		if (this.closing) return;
-		const gatewayUrl = await this.getGatewayUrl();
+		const resumeState = this.readResumeState();
+		if (!resumeState) {
+			const waitMs = this.identifyBudget.msUntilAvailable();
+			if (waitMs > 0) {
+				throw new ApplicationError(
+					`Discord Gateway identify budget exhausted; next identify allowed in ${Math.ceil(waitMs / 1000)} s`,
+				);
+			}
+		}
 
 		if (this.closing) return;
-		this.ws = this.createWebSocket(gatewayUrl);
-		await this.ws.connect({
-			token,
-			intents,
-			resumeState: this.trigger.getWorkflowStaticData('node') as {
-				sessionId?: string;
-				sequence?: number;
-			},
-		});
+		const gatewayUrl = resumeState?.resumeGatewayUrl ?? (await this.getGatewayUrl());
+
+		if (this.closing) return;
+		const ws = this.createWebSocket(gatewayUrl);
+		this.ws = ws;
+		try {
+			await ws.connect({
+				token,
+				intents,
+				resumeState,
+				onIdentify: () => this.identifyBudget.record(),
+			});
+		} finally {
+			this.persistSessionState();
+		}
 
 		if (this.closing) {
-			await this.ws.close();
+			await ws.close();
 			return;
 		}
 
 		this.reconnectAttempts = 0;
-		this.persistSessionState();
 	}
 
-	async close(): Promise<void> {
-		this.closing = true;
-		const ws = this.ws;
-		if (ws) {
+	private handleConnectFailure(error: unknown): void {
+		if (this.closing) return;
+
+		if (error instanceof FatalGatewayError) {
+			this.stopForGood(error.message);
+			return;
+		}
+
+		LoggerProxy.warn('Discord Gateway connection attempt failed, retrying', {
+			error: error instanceof Error ? error.message : String(error),
+			attempt: this.reconnectAttempts + 1,
+			workflowId: this.trigger.getWorkflow().id,
+			nodeType: NODE_TYPE,
+		});
+		this.scheduleReconnect();
+	}
+
+	private handleDisconnect(info: DisconnectInfo): void {
+		if (this.closing) {
+			return;
+		}
+
+		if (info.fatal) {
+			this.stopForGood(new FatalGatewayError(info.fatal.code).message);
+			return;
+		}
+
+		if (info.canResume) {
 			this.persistSessionState();
-			await ws.close();
+		} else {
+			this.clearSessionState();
 		}
+
+		LoggerProxy.warn('Discord Gateway disconnected, reconnecting', {
+			canResume: info.canResume,
+			workflowId: this.trigger.getWorkflow().id,
+			nodeType: NODE_TYPE,
+		});
+		this.scheduleReconnect();
 	}
 
-	sendCommand(payload: { op: number; d: unknown }): void {
-		if (!this.ws) {
-			throw new Error('Discord Gateway connection is not established');
+	private scheduleReconnect(): void {
+		this.reconnectAttempts++;
+		let delay = nextReconnectDelay(this.reconnectAttempts, this.backoff);
+		if (!this.readResumeState()) {
+			delay = Math.max(delay, this.identifyBudget.msUntilAvailable());
 		}
-		this.ws.sendCommand(payload);
+
+		this.waitUnlessClosing(delay)
+			.then(async (proceed) => {
+				if (proceed) await this.connectOnce();
+			})
+			.catch((error) => this.handleConnectFailure(error));
+	}
+
+	private async waitUnlessClosing(ms: number): Promise<boolean> {
+		let remaining = ms;
+		while (remaining > 0 && !this.closing) {
+			const step = Math.min(remaining, MAX_WAIT_STEP_MS);
+			await sleep(step);
+			remaining -= step;
+		}
+		return !this.closing;
+	}
+
+	private stopForGood(message: string): void {
+		this.closing = true;
+		this.clearSessionState();
+		LoggerProxy.error('Discord Gateway closed with a non-recoverable code, not reconnecting', {
+			error: message,
+			workflowId: this.trigger.getWorkflow().id,
+			nodeType: NODE_TYPE,
+		});
+		this.trigger.emitError(new NodeOperationError(this.trigger.getNode(), message));
 	}
 
 	private async getGatewayUrl(): Promise<string> {
@@ -89,12 +220,23 @@ export class DiscordGatewayConnection {
 			gatewayUrl,
 			this.trigger.getWorkflow().id || '',
 			(eventName, data, raw) => this.handleEvent(eventName, data, raw),
-			(canResume) => this.handleDisconnect(canResume),
+			(info) => this.handleDisconnect(info),
+			{ random: this.backoff.random },
 		);
 	}
 
 	private handleEvent(eventName: string, data: IDataObject, raw: IDataObject): void {
 		this.persistSessionState();
+		if (eventName === 'READY' || eventName === 'RESUMED') {
+			LoggerProxy.info('Discord Gateway connected', {
+				version: PACKAGE_VERSION,
+				sessionId: this.trigger.getWorkflowStaticData('node').sessionId,
+				resumed: eventName === 'RESUMED',
+				workflowId: this.trigger.getWorkflow().id,
+				nodeType: NODE_TYPE,
+			});
+		}
+
 		if (this.event !== '*' && eventName !== this.event) {
 			return;
 		}
@@ -118,39 +260,27 @@ export class DiscordGatewayConnection {
 		);
 	}
 
-	private handleDisconnect(canResume: boolean): void {
-		if (this.closing) {
-			return;
+	private readResumeState(): GatewayResumeState | undefined {
+		const { sessionId, sequence, resumeGatewayUrl } = this.trigger.getWorkflowStaticData('node');
+		if (typeof sessionId !== 'string' || typeof sequence !== 'number') {
+			return undefined;
 		}
+		return {
+			sessionId,
+			sequence,
+			resumeGatewayUrl: typeof resumeGatewayUrl === 'string' ? resumeGatewayUrl : undefined,
+		};
+	}
 
-		if (!canResume) {
-			const staticData = this.trigger.getWorkflowStaticData('node');
-			delete staticData.sessionId;
-			delete staticData.sequence;
-			delete staticData.resumeGatewayUrl;
+	private clearSessionState(): void {
+		const staticData = this.trigger.getWorkflowStaticData('node');
+		for (const key of SESSION_KEYS) {
+			delete staticData[key];
 		}
-
-		if (this.reconnectAttempts >= MAX_RECONNECT_ATTEMPTS) {
-			LoggerProxy.error('Discord Gateway: max reconnect attempts reached, giving up', {
-				workflowId: this.trigger.getWorkflow().id,
-				nodeType: 'n8n-nodes-discord.discordTrigger',
-				attempts: this.reconnectAttempts,
-			});
-			return;
-		}
-
-		this.reconnectAttempts++;
-		const delay = BASE_RECONNECT_DELAY_MS * Math.pow(2, this.reconnectAttempts - 1);
-
-		void sleep(delay).then(() => {
-			if (!this.closing) {
-				void this.connect();
-			}
-		});
 	}
 
 	private persistSessionState(): void {
-		if (!this.ws) {
+		if (!this.ws || this.closing) {
 			return;
 		}
 		const staticData = this.trigger.getWorkflowStaticData('node');

@@ -118,7 +118,7 @@ export class DiscordTrigger implements INodeType {
 		registerGatewaySender(connectionName, sender);
 
 		try {
-			await connection.connect();
+			await connection.start();
 		} catch (error) {
 			// If connection fails, make sure we don't leave a dead reference in the map
 			unregisterActiveConnection(registryKey, connection);
