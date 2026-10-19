@@ -3,6 +3,8 @@ import { LoggerProxy, type IDataObject, type ITriggerFunctions } from 'n8n-workf
 import { DISCORD_API_BASE_URL } from '../Discord/shared/constants';
 import { httpStatusOf } from './errors';
 
+export const REST_TIMEOUT_MS = 15_000;
+
 export type AlertKind = 'fatal' | 'down' | 'recovered';
 
 export interface AlertSink {
@@ -51,6 +53,7 @@ export function createDmAlertSink(trigger: ITriggerFunctions, userId: string): A
 			url: `${DISCORD_API_BASE_URL}${url}`,
 			body,
 			json: true,
+			timeout: REST_TIMEOUT_MS,
 		}) as Promise<IDataObject>;
 
 	return {

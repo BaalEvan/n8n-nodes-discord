@@ -15,6 +15,8 @@ export class FakeGateway {
 	ackHeartbeats = true;
 	sendHello = true;
 	malformedIdentifyReplies = 0;
+	closeAfterReady: number | null = null;
+	rejectResumes = false;
 	connections: FakeConnection[] = [];
 
 	private server: WebSocketServer | null = null;
@@ -83,6 +85,11 @@ export class FakeGateway {
 			this.handle(socket, message);
 		});
 
+		if (this.rejectResumes && connection.path === '/resume') {
+			socket.terminate();
+			return;
+		}
+
 		if (!this.sendHello) return;
 		connection.helloAt = Date.now();
 		this.send(socket, { op: 10, d: { heartbeat_interval: this.heartbeatIntervalMs } });
@@ -114,6 +121,7 @@ export class FakeGateway {
 					resume_gateway_url: `${this.baseUrl}/resume`,
 				},
 			});
+			this.closeIfFlapping(socket);
 			return;
 		}
 
@@ -123,7 +131,12 @@ export class FakeGateway {
 				return;
 			}
 			this.send(socket, { op: 0, t: 'RESUMED', s: ++this.sequence, d: {} });
+			this.closeIfFlapping(socket);
 		}
+	}
+
+	private closeIfFlapping(socket: WebSocket): void {
+		if (this.closeAfterReady !== null) socket.close(this.closeAfterReady);
 	}
 
 	private send(socket: WebSocket, payload: object): void {

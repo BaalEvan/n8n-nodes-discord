@@ -16,6 +16,8 @@ export interface FakeTrigger extends ITriggerFunctions {
 	emitted: IDataObject[];
 	errors: Error[];
 	rest: Array<{ method: string; url: string; body?: unknown }>;
+	requests: IDataObject[];
+	sentMessages: string[];
 	staticData: IDataObject;
 	gatewayBotHttpStatus?: number;
 	failMessagePosts: number;
@@ -41,6 +43,8 @@ export function createFakeTrigger(opts: FakeTriggerOptions): FakeTrigger {
 		emitted: [] as IDataObject[],
 		errors: [] as Error[],
 		rest: [] as Array<{ method: string; url: string; body?: unknown }>,
+		requests: [] as IDataObject[],
+		sentMessages: [] as string[],
 		staticData,
 		gatewayBotHttpStatus: opts.gatewayBotHttpStatus,
 		failMessagePosts: 0,
@@ -68,6 +72,7 @@ export function createFakeTrigger(opts: FakeTriggerOptions): FakeTrigger {
 			) {
 				const { method, url, body } = request;
 				trigger.rest.push({ method, url, body });
+				trigger.requests.push({ ...request } as IDataObject);
 				if (method === 'GET' && url.endsWith('/gateway/bot')) {
 					if (trigger.gatewayBotHttpStatus !== undefined) {
 						throw Object.assign(new Error('Authorization failed - please check your credentials'), {
@@ -93,6 +98,7 @@ export function createFakeTrigger(opts: FakeTriggerOptions): FakeTrigger {
 						trigger.failMessagePosts--;
 						throw new Error('fake message POST failure');
 					}
+					trigger.sentMessages.push((body as { content: string }).content);
 					return { id: 'm-1' };
 				}
 				throw new Error(`fake trigger: unexpected request ${method} ${url}`);

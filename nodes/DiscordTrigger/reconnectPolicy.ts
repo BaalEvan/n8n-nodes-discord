@@ -34,6 +34,12 @@ export class IdentifyBudget {
 		return this.records.length;
 	}
 
+	msSinceLastRecord(): number {
+		this.prune();
+		if (this.records.length === 0) return Infinity;
+		return this.now() - this.records[this.records.length - 1];
+	}
+
 	msUntilAvailable(): number {
 		this.prune();
 		if (this.records.length < this.limit) return 0;

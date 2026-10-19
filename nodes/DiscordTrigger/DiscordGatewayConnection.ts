@@ -9,10 +9,16 @@ import {
 
 import { DISCORD_API_BASE_URL } from '../Discord/shared/constants';
 import { calculateIntents } from '../Discord/shared/intents';
-import { alertText, claimFatalAlert, releaseFatalAlerts, type AlertSink } from './alerts';
+import {
+	alertText,
+	claimFatalAlert,
+	releaseFatalAlerts,
+	REST_TIMEOUT_MS,
+	type AlertSink,
+} from './alerts';
 import { getCloseCodeMeta } from './closeCodes';
 import { tokenFingerprint } from './connectionRegistry';
-import { FatalGatewayError, httpStatusOf } from './errors';
+import { FatalGatewayError, httpStatusOf, InvalidSessionError } from './errors';
 import { shouldEmitGatewayEvent } from './events/policies';
 import {
 	GatewayWebSocket,
@@ -31,8 +37,12 @@ import { PACKAGE_VERSION } from './version';
 const NODE_TYPE = 'n8n-nodes-discord.discordTrigger';
 const SESSION_KEYS = ['sessionId', 'sequence', 'resumeGatewayUrl'];
 const MAX_WAIT_STEP_MS = 1000;
-const AUTH_FAILURE_STATUSES = [401, 403];
+const AUTH_FAILURE_STATUS = 401;
 const DEFAULT_OUTAGE_CHECK_MS = 60_000;
+const DEFAULT_STABLE_PERIOD_MS = 60_000;
+const DEFAULT_IDENTIFY_SPACING_MS = 5000;
+const DEFAULT_INVALID_SESSION_WAIT = { minMs: 1000, maxMs: 5000 };
+const MAX_FAILED_RESUMES = 3;
 const MS_PER_MINUTE = 60_000;
 
 export interface DiscordGatewayConnectionOptions {
@@ -44,6 +54,9 @@ export interface DiscordGatewayConnectionOptions {
 	now?: () => number;
 	connectTimeoutMs?: number;
 	token?: string;
+	stablePeriodMs?: number;
+	identifySpacingMs?: number;
+	invalidSessionWait?: { minMs: number; maxMs: number };
 }
 
 export class DiscordGatewayConnection {
@@ -58,12 +71,20 @@ export class DiscordGatewayConnection {
 	private readonly alertAfterMs: number;
 	private readonly outageCheckMs: number;
 	private readonly now: () => number;
+	private readonly stablePeriodMs: number;
+	private readonly identifySpacingMs: number;
+	private readonly invalidSessionWait: { minMs: number; maxMs: number };
 	private fingerprint = 'unknown';
 	private downSince: number | null = null;
 	private downAlertSent = false;
 	private outageLoopRunning = false;
 	private lastUpAt = 0;
 	private pendingRecovered: string | null = null;
+	private connectedAt: number | null = null;
+	private sessionEpoch = 0;
+	private failedResumes = 0;
+	private invalidSessionPending = false;
+	private downAlertInFlight = false;
 
 	constructor(
 		private readonly trigger: ITriggerFunctions,
@@ -79,9 +100,14 @@ export class DiscordGatewayConnection {
 		this.alertAfterMs = options.alertAfterMs ?? 10 * MS_PER_MINUTE;
 		this.outageCheckMs = options.outageCheckMs ?? DEFAULT_OUTAGE_CHECK_MS;
 		this.now = options.now ?? Date.now;
+		this.stablePeriodMs = options.stablePeriodMs ?? DEFAULT_STABLE_PERIOD_MS;
+		this.identifySpacingMs = options.identifySpacingMs ?? DEFAULT_IDENTIFY_SPACING_MS;
+		this.invalidSessionWait = options.invalidSessionWait ?? DEFAULT_INVALID_SESSION_WAIT;
 	}
 
 	async start(): Promise<void> {
+		// A session saved by an earlier activation is never resumed.
+		this.clearSessionState();
 		await this.connectOnce().catch((error: unknown) => {
 			if (error instanceof FatalGatewayError) {
 				this.closing = true;
@@ -131,6 +157,8 @@ export class DiscordGatewayConnection {
 					`Discord Gateway identify budget exhausted; next identify allowed in ${Math.ceil(waitMs / 1000)} s`,
 				);
 			}
+			const spacingMs = this.identifySpacingMs - this.identifyBudget.msSinceLastRecord();
+			if (spacingMs > 0 && !(await this.waitUnlessClosing(spacingMs))) return;
 		}
 
 		if (this.closing) return;
@@ -148,16 +176,29 @@ export class DiscordGatewayConnection {
 			})
 			.catch((error: unknown) => {
 				void ws.close(RECONNECT_CLOSE_CODE);
+				this.persistSessionState();
+				if (resumeState) this.recordFailedResume();
 				throw error;
-			})
-			.finally(() => this.persistSessionState());
+			});
+		this.persistSessionState();
 
 		if (this.closing) {
 			await ws.close();
 			return;
 		}
 
-		this.reconnectAttempts = 0;
+		this.failedResumes = 0;
+	}
+
+	private recordFailedResume(): void {
+		this.failedResumes++;
+		if (this.failedResumes < MAX_FAILED_RESUMES) return;
+		this.failedResumes = 0;
+		this.clearSessionState();
+		LoggerProxy.warn('Discord Gateway resume failed repeatedly, identifying a new session', {
+			workflowId: this.trigger.getWorkflow().id,
+			nodeType: NODE_TYPE,
+		});
 	}
 
 	private handleConnectFailure(error: unknown): void {
@@ -169,6 +210,9 @@ export class DiscordGatewayConnection {
 				return;
 			}
 
+			if (error instanceof InvalidSessionError) {
+				this.invalidSessionPending = true;
+			}
 			this.markDown();
 			LoggerProxy.warn('Discord Gateway connection attempt failed, retrying', {
 				error: error instanceof Error ? error.message : String(error),
@@ -190,29 +234,47 @@ export class DiscordGatewayConnection {
 			return;
 		}
 
-		if (info.fatal) {
-			this.stopForGood(new FatalGatewayError(info.fatal.code).message, info.fatal.code);
-			return;
+		try {
+			this.markDown();
+			if (info.fatal) {
+				this.stopForGood(new FatalGatewayError(info.fatal.code).message, info.fatal.code);
+				return;
+			}
+
+			if (info.invalidSession) {
+				this.invalidSessionPending = true;
+			}
+			if (info.canResume) {
+				this.persistSessionState();
+			} else {
+				this.clearSessionState();
+			}
+
+			LoggerProxy.warn('Discord Gateway disconnected, reconnecting', {
+				canResume: info.canResume,
+				workflowId: this.trigger.getWorkflow().id,
+				nodeType: NODE_TYPE,
+			});
+		} catch (error) {
+			LoggerProxy.error('Discord Gateway failed to handle a disconnect', {
+				error: error instanceof Error ? error.message : String(error),
+				nodeType: NODE_TYPE,
+			});
 		}
 
-		if (info.canResume) {
-			this.persistSessionState();
-		} else {
-			this.clearSessionState();
+		if (!this.closing) {
+			this.scheduleReconnect();
 		}
-
-		this.markDown();
-		LoggerProxy.warn('Discord Gateway disconnected, reconnecting', {
-			canResume: info.canResume,
-			workflowId: this.trigger.getWorkflow().id,
-			nodeType: NODE_TYPE,
-		});
-		this.scheduleReconnect();
 	}
 
 	private scheduleReconnect(): void {
 		this.reconnectAttempts++;
 		let delay = nextReconnectDelay(this.reconnectAttempts, this.backoff);
+		if (this.invalidSessionPending) {
+			this.invalidSessionPending = false;
+			const { minMs, maxMs } = this.invalidSessionWait;
+			delay = Math.max(delay, Math.round(minMs + this.backoff.random() * (maxMs - minMs)));
+		}
 		if (!this.readResumeState()) {
 			delay = Math.max(delay, this.identifyBudget.msUntilAvailable());
 		}
@@ -224,26 +286,26 @@ export class DiscordGatewayConnection {
 			.catch((error) => this.handleConnectFailure(error));
 	}
 
-	private async waitUnlessClosing(ms: number): Promise<boolean> {
+	private async waitUnlessClosing(ms: number, stillValid = () => true): Promise<boolean> {
 		let remaining = ms;
-		while (remaining > 0 && !this.closing) {
+		while (remaining > 0 && !this.closing && stillValid()) {
 			const step = Math.min(remaining, MAX_WAIT_STEP_MS);
 			await sleep(step);
 			remaining -= step;
 		}
-		return !this.closing;
+		return !this.closing && stillValid();
 	}
 
 	private stopForGood(message: string, code: number): void {
 		this.closing = true;
 		this.clearSessionState();
+		this.sendFatalAlert(code);
 		LoggerProxy.error('Discord Gateway closed with a non-recoverable code, not reconnecting', {
 			error: message,
 			workflowId: this.trigger.getWorkflow().id,
 			nodeType: NODE_TYPE,
 		});
 		this.trigger.emitError(new NodeOperationError(this.trigger.getNode(), message));
-		this.sendFatalAlert(code);
 	}
 
 	private sendFatalAlert(code: number): void {
@@ -259,6 +321,8 @@ export class DiscordGatewayConnection {
 	}
 
 	private markDown(): void {
+		this.sessionEpoch++;
+		this.connectedAt = null;
 		if (this.downSince === null) {
 			this.downSince = this.now();
 		}
@@ -293,13 +357,18 @@ export class DiscordGatewayConnection {
 		}
 
 		const downSince = this.downSince;
-		if (downSince === null || this.downAlertSent) return;
+		if (downSince === null || this.downAlertSent || this.connectedAt !== null) return;
 		const elapsed = this.now() - downSince;
 		if (elapsed < this.alertAfterMs) return;
-		const sent = await sink.send('down', alertText('down', { minutes: toMinutes(elapsed) }));
-		if (!sent) return;
+		this.downAlertInFlight = true;
+		let sent: boolean;
+		try {
+			sent = await sink.send('down', alertText('down', { minutes: toMinutes(elapsed) }));
+		} finally {
+			this.downAlertInFlight = false;
+		}
 		if (this.downSince === downSince) {
-			this.downAlertSent = true;
+			if (sent) this.downAlertSent = true;
 			return;
 		}
 		await this.sendRecovered(toMinutes(this.lastUpAt - downSince));
@@ -313,15 +382,29 @@ export class DiscordGatewayConnection {
 		if (!sent) this.pendingRecovered = text;
 	}
 
+	private markSessionUp(): void {
+		const epoch = ++this.sessionEpoch;
+		this.connectedAt = this.now();
+		void this.waitUnlessClosing(this.stablePeriodMs, () => epoch === this.sessionEpoch)
+			.then((stable) => {
+				if (!stable) return;
+				this.reconnectAttempts = 0;
+				this.markUp();
+			})
+			.catch(() => undefined);
+	}
+
 	private markUp(): void {
 		const downSince = this.downSince;
 		if (downSince === null) return;
 		const alerted = this.downAlertSent;
 		this.downSince = null;
 		this.downAlertSent = false;
-		this.lastUpAt = this.now();
-		if (alerted) {
-			void this.sendRecovered(toMinutes(this.lastUpAt - downSince));
+		this.lastUpAt = this.connectedAt ?? this.now();
+		const outageMs = this.lastUpAt - downSince;
+		// An unsent down alert (REST down too) is reported here with the outage length.
+		if (alerted || (!this.downAlertInFlight && outageMs >= this.alertAfterMs)) {
+			void this.sendRecovered(toMinutes(outageMs));
 		}
 	}
 
@@ -331,10 +414,11 @@ export class DiscordGatewayConnection {
 				method: 'GET',
 				url: `${DISCORD_API_BASE_URL}/gateway/bot`,
 				json: true,
+				timeout: REST_TIMEOUT_MS,
 			})
 			.catch((error: unknown) => {
 				const status = httpStatusOf(error);
-				if (status !== undefined && AUTH_FAILURE_STATUSES.includes(status)) {
+				if (status === AUTH_FAILURE_STATUS) {
 					throw new FatalGatewayError(
 						4004,
 						`Discord rejected the bot token (HTTP ${status} from /gateway/bot). Check the Discord Gateway Bot API credential.`,
@@ -361,7 +445,7 @@ export class DiscordGatewayConnection {
 		this.persistSessionState();
 		if (eventName === 'READY' || eventName === 'RESUMED') {
 			releaseFatalAlerts(this.fingerprint);
-			this.markUp();
+			this.markSessionUp();
 			LoggerProxy.info('Discord Gateway connected', {
 				version: PACKAGE_VERSION,
 				sessionId: this.trigger.getWorkflowStaticData('node').sessionId,

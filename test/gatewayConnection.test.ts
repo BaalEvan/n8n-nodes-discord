@@ -41,7 +41,12 @@ describe('DiscordGatewayConnection', () => {
 			trigger,
 			'*',
 			(data) => trigger.emitted.push(data),
-			{ backoff, ...options },
+			{
+				backoff,
+				identifySpacingMs: 0,
+				invalidSessionWait: { minMs: 0, maxMs: 0 },
+				...options,
+			},
 		);
 		connections.push(connection);
 		return connection;
@@ -139,13 +144,17 @@ describe('DiscordGatewayConnection', () => {
 	});
 
 	it('stale saved session from an older build', async () => {
-		const { trigger, connection } = await setup({ staticData: { sessionId: 'old', sequence: 5 } });
+		const { trigger, connection } = await setup({
+			staticData: { sessionId: 'old', sequence: 5, resumeGatewayUrl: 'ws://127.0.0.1:1/resume' },
+		});
 		gateway.onResume = 'invalid';
 		await connection.start();
 		await expect.poll(() => trigger.staticData.sessionId).toBe('sess-1');
-		const [stale] = gateway.connections;
-		expect(stale.path).toBe('/');
-		expect(stale.received.find((m) => m.op === 6)?.d).toMatchObject({ session_id: 'old', seq: 5 });
+		expect(gateway.connections).toHaveLength(1);
+		const [first] = gateway.connections;
+		expect(first.path).toBe('/');
+		expect(first.received.some((m) => m.op === 2)).toBe(true);
+		expect(first.received.some((m) => m.op === 6)).toBe(false);
 		gateway.dispatch('MESSAGE_CREATE', {});
 		await expect.poll(() => emittedEvents(trigger)).toContain('MESSAGE_CREATE');
 	});
@@ -206,13 +215,24 @@ describe('DiscordGatewayConnection', () => {
 		expect(countOp(2)).toBe(3);
 	});
 
-	it.each([401, 403])('HTTP %i from /gateway/bot at activation is fatal', async (status) => {
-		const { trigger, connection } = await setup({ gatewayBotHttpStatus: status });
+	it('HTTP 401 from /gateway/bot at activation is fatal', async () => {
+		const { trigger, connection } = await setup({ gatewayBotHttpStatus: 401 });
 		const error = await connection.start().catch((e: unknown) => e);
 		expect(error).toBeInstanceOf(FatalGatewayError);
 		expect((error as FatalGatewayError).closeCode).toBe(4004);
 		expect(gateway.connections.length).toBe(0);
 		expect(trigger.rest.length).toBe(1);
+	});
+
+	it('HTTP 403 from /gateway/bot is transient', async () => {
+		const { trigger, connection } = await setup({ gatewayBotHttpStatus: 403 });
+		await expect(connection.start()).resolves.toBeUndefined();
+		const gatewayBotCalls = () => trigger.rest.filter((r) => r.url.endsWith('/gateway/bot')).length;
+		await expect.poll(gatewayBotCalls).toBeGreaterThanOrEqual(3);
+		expect(trigger.errors).toHaveLength(0);
+		trigger.gatewayBotHttpStatus = undefined;
+		await expect.poll(() => trigger.staticData.sessionId).toBe('sess-1');
+		expect(trigger.errors).toHaveLength(0);
 	});
 
 	it('HTTP 401 from /gateway/bot on reconnect stops for good', async () => {
@@ -271,5 +291,110 @@ describe('DiscordGatewayConnection', () => {
 			sessionId: 'sess-1',
 			resumed: true,
 		});
+	});
+
+	it('passes a timeout to GET /gateway/bot', async () => {
+		const { trigger, connection } = await setup();
+		await connection.start();
+		const request = trigger.requests.find((r) => String(r.url).endsWith('/gateway/bot'));
+		expect(request?.timeout).toBe(15000);
+	});
+
+	it('backoff keeps growing when every session drops right after READY', async () => {
+		const { connection } = await setup(
+			{},
+			{ backoff: { baseDelayMs: 20, maxDelayMs: 1000, random: () => 0.5 } },
+		);
+		gateway.closeAfterReady = 4000;
+		await connection.start();
+		await expect.poll(() => gateway.connections.length, { timeout: 3000 }).toBeGreaterThanOrEqual(6);
+		const hellos = gateway.connections.map((c) => c.helloAt);
+		expect(hellos[5] - hellos[4]).toBeGreaterThanOrEqual(200);
+	});
+
+	it('backoff resets once a session stays up for the stable period', async () => {
+		const { connection } = await setup(
+			{},
+			{ backoff: { baseDelayMs: 20, maxDelayMs: 1000, random: () => 0.5 }, stablePeriodMs: 100 },
+		);
+		gateway.closeAfterReady = 4000;
+		await connection.start();
+		await expect.poll(() => gateway.connections.length, { timeout: 3000 }).toBeGreaterThanOrEqual(4);
+		gateway.closeAfterReady = null;
+		await expect.poll(() => gateway.openConnections, { timeout: 3000 }).toBe(1);
+		const count = gateway.connections.length;
+		await sleep(250);
+		expect(gateway.connections.length).toBe(count);
+		const droppedAt = Date.now();
+		gateway.closeAll(4000);
+		await expect.poll(() => gateway.connections.length).toBe(count + 1);
+		expect(gateway.connections[count].helloAt - droppedAt).toBeLessThan(100);
+	});
+
+	it('spaces IDENTIFY sends by the identify interval', async () => {
+		const { connection } = await setup({}, { identifySpacingMs: 150 });
+		gateway.onIdentify = { closeWith: 4003 };
+		await connection.start();
+		await expect.poll(() => countOp(2), { timeout: 3000 }).toBeGreaterThanOrEqual(3);
+		const identifyTimes = gateway.connections
+			.map((c) => c.receivedAt[c.received.findIndex((m) => m.op === 2)])
+			.filter((t) => t !== undefined);
+		for (let i = 1; i < identifyTimes.length; i++) {
+			expect(identifyTimes[i] - identifyTimes[i - 1]).toBeGreaterThanOrEqual(140);
+		}
+	});
+
+	it('waits after INVALID_SESSION before identifying again', async () => {
+		const { trigger, connection } = await setup(
+			{},
+			{ invalidSessionWait: { minMs: 100, maxMs: 300 } },
+		);
+		await connection.start();
+		const sentAt = Date.now();
+		gateway.sendToAll({ op: 9, d: false });
+		await expect.poll(() => gateway.connections.length).toBe(2);
+		expect(gateway.connections[1].helloAt - sentAt).toBeGreaterThanOrEqual(190);
+		await expect.poll(() => trigger.staticData.sessionId).toBe('sess-2');
+	});
+
+	it('waits after INVALID_SESSION on a resume before identifying', async () => {
+		const { trigger, connection } = await setup(
+			{},
+			{ invalidSessionWait: { minMs: 100, maxMs: 300 } },
+		);
+		await connection.start();
+		gateway.onResume = 'invalid';
+		gateway.sendToAll({ op: 7, d: null });
+		await expect.poll(() => gateway.connections.length).toBe(3);
+		const [, resumeAttempt, fresh] = gateway.connections;
+		const resumeSentAt = resumeAttempt.receivedAt[resumeAttempt.received.findIndex((m) => m.op === 6)];
+		expect(fresh.helloAt - resumeSentAt).toBeGreaterThanOrEqual(190);
+		await expect.poll(() => trigger.staticData.sessionId).toBe('sess-2');
+	});
+
+	it('falls back to IDENTIFY after three failed resumes', async () => {
+		const { trigger, connection } = await setup();
+		await connection.start();
+		gateway.rejectResumes = true;
+		gateway.sendToAll({ op: 7, d: null });
+		await expect.poll(() => trigger.staticData.sessionId, { timeout: 3000 }).toBe('sess-2');
+		expect(gateway.connections.map((c) => c.path)).toEqual(['/', '/resume', '/resume', '/resume', '/']);
+		expect(gateway.connections[4].received.some((m) => m.op === 2)).toBe(true);
+	});
+
+	it('still reconnects when handling a disconnect throws', async () => {
+		LoggerProxy.init({
+			error: noop,
+			info: noop,
+			debug: noop,
+			warn: (message: string) => {
+				if (message === 'Discord Gateway disconnected, reconnecting') throw new Error('logger down');
+			},
+		} as never);
+		const { trigger, connection } = await setup();
+		await connection.start();
+		gateway.sendToAll({ op: 7, d: null });
+		await expect.poll(() => gateway.connections.length).toBe(2);
+		await expect.poll(() => emittedEvents(trigger)).toContain('RESUMED');
 	});
 });

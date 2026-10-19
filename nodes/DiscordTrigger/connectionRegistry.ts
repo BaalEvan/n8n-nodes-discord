@@ -1,5 +1,7 @@
 import { createHash } from 'node:crypto';
 
+import { LoggerProxy } from 'n8n-workflow';
+
 import type { DiscordGatewayConnection } from './DiscordGatewayConnection';
 import { IdentifyBudget } from './reconnectPolicy';
 
@@ -81,9 +83,29 @@ export function takeOverManualConnections(fingerprint: string): Promise<void> {
 	for (const [key, entry] of activeConnections) {
 		if (entry.mode === 'manual' && entry.fingerprint === fingerprint) {
 			activeConnections.delete(key);
-			entry.onTakeover?.();
-			closing.push(entry.connection.close());
+			closing.push(closeForTakeover(entry));
 		}
 	}
 	return Promise.all(closing).then(() => undefined);
+}
+
+async function closeForTakeover(entry: RegistryEntry): Promise<void> {
+	try {
+		await entry.connection.close();
+	} catch (error) {
+		logTakeoverFailure('close', error);
+	}
+	try {
+		entry.onTakeover?.();
+	} catch (error) {
+		logTakeoverFailure('notify', error);
+	}
+}
+
+function logTakeoverFailure(step: string, error: unknown): void {
+	LoggerProxy.warn('Discord Gateway manual run takeover step failed', {
+		step,
+		error: error instanceof Error ? error.message : String(error),
+		nodeType: 'n8n-nodes-discord.discordTrigger',
+	});
 }

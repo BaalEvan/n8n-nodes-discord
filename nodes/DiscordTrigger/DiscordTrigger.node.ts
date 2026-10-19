@@ -81,16 +81,18 @@ export class DiscordTrigger implements INodeType {
 		const nodeId = this.getNode().id;
 		const key = registryKey(workflowId, nodeId, mode);
 
-		if (mode === 'manual') {
-			if (productionHolder(fingerprint)) {
+		const refuseManualOnProductionToken = () => {
+			if (mode === 'manual' && productionHolder(fingerprint)) {
 				throw new NodeOperationError(
 					this.getNode(),
 					'This bot token is in use by an active Discord Trigger. Use the test bot token for manual runs.',
 				);
 			}
-		}
+		};
 
+		refuseManualOnProductionToken();
 		await closeStaleConnection(key);
+		refuseManualOnProductionToken();
 
 		if (mode === 'trigger') {
 			const holder = productionHolder(fingerprint);

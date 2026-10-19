@@ -17,6 +17,13 @@ export class FatalGatewayError extends ApplicationError {
 	}
 }
 
+export class InvalidSessionError extends ApplicationError {
+	constructor(message: string) {
+		super(message);
+		this.name = 'InvalidSessionError';
+	}
+}
+
 export function httpStatusOf(error: unknown): number | undefined {
 	if (typeof error !== 'object' || error === null) return undefined;
 	const candidate = error as {

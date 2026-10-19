@@ -56,4 +56,13 @@ describe('IdentifyBudget', () => {
 		now = 86_400_000 + 1;
 		expect(budget.msUntilAvailable()).toBe(0);
 	});
+
+	it('reports the time since the last identify', () => {
+		let now = 5000;
+		const budget = new IdentifyBudget(900, 86_400_000, () => now);
+		expect(budget.msSinceLastRecord()).toBe(Infinity);
+		budget.record();
+		now += 1200;
+		expect(budget.msSinceLastRecord()).toBe(1200);
+	});
 });

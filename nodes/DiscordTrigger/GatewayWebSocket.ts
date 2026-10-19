@@ -1,7 +1,7 @@
 import { ApplicationError, LoggerProxy, sleep, type IDataObject } from 'n8n-workflow';
 
 import { getCloseCodeMeta } from './closeCodes';
-import { FatalGatewayError } from './errors';
+import { FatalGatewayError, InvalidSessionError } from './errors';
 
 const OPCODE_DISPATCH = 0;
 const OPCODE_HEARTBEAT = 1;
@@ -21,6 +21,7 @@ type EventHandler = (eventName: string, data: IDataObject, raw: IDataObject) => 
 
 export interface DisconnectInfo {
 	canResume: boolean;
+	invalidSession?: boolean;
 	fatal?: { code: number; name: string; description: string };
 }
 
@@ -296,7 +297,7 @@ export class GatewayWebSocket {
 				this.clearSession();
 			}
 			this.requestReconnect(
-				{ canResume: this.sessionId !== null },
+				{ canResume: this.sessionId !== null, invalidSession: true },
 				'Discord Gateway invalidated the session',
 			);
 			return;
@@ -389,7 +390,9 @@ export class GatewayWebSocket {
 
 	private requestReconnect(info: DisconnectInfo, reason: string): void {
 		const wasReady = this.ready;
-		this.pendingConnectReject?.(new ApplicationError(reason));
+		this.pendingConnectReject?.(
+			info.invalidSession ? new InvalidSessionError(reason) : new ApplicationError(reason),
+		);
 		void this.close(RECONNECT_CLOSE_CODE);
 		if (wasReady) {
 			this.onDisconnect(info);

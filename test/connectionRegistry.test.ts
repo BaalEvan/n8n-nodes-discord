@@ -1,5 +1,5 @@
-import { LoggerProxy } from 'n8n-workflow';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { LoggerProxy, sleep } from 'n8n-workflow';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
 	identifyBudgetFor,
@@ -10,6 +10,18 @@ import { getGatewaySender } from '../nodes/DiscordTrigger/gatewaySendBus';
 import { DiscordTrigger } from '../nodes/DiscordTrigger/DiscordTrigger.node';
 import { FakeGateway } from './support/fakeGateway';
 import { createFakeTrigger, type FakeTriggerOptions } from './support/fakeTrigger';
+
+vi.mock('../nodes/DiscordTrigger/DiscordGatewayConnection', async (importOriginal) => {
+	const actual =
+		await importOriginal<typeof import('../nodes/DiscordTrigger/DiscordGatewayConnection')>();
+	class FastConnection extends actual.DiscordGatewayConnection {
+		constructor(...args: ConstructorParameters<typeof actual.DiscordGatewayConnection>) {
+			const [trigger, event, onEvent, options] = args;
+			super(trigger, event, onEvent, { identifySpacingMs: 0, ...options });
+		}
+	}
+	return { ...actual, DiscordGatewayConnection: FastConnection };
+});
 
 const noop = () => {};
 const MANUAL_ERROR =
@@ -163,5 +175,41 @@ describe('connection registry', () => {
 		await activate({ workflowId: 'A', token: 'tok-budget' });
 		await expect.poll(() => first.count()).toBe(2);
 		expect(identifyBudgetFor(fp)).toBe(first);
+	});
+
+	it('a throwing takeover handler still leaves only the production connection open', async () => {
+		const manual = await activate({
+			workflowId: 'M',
+			token: 'tok-1',
+			mode: 'manual',
+			params: { connectionName: 'manual-name' },
+		});
+		await expect.poll(() => gateway.openConnections).toBe(1);
+		expect(getGatewaySender('manual-name')).toBeDefined();
+		manual.fake.emitError = () => {
+			throw new Error('emitError failed');
+		};
+
+		await activate({ workflowId: 'A', token: 'tok-1', params: { connectionName: 'prod-name' } });
+		await expect.poll(() => gateway.connections.length).toBe(2);
+		await expect.poll(() => gateway.connections[0].closeCode).toBe(1000);
+		await expect.poll(() => gateway.openConnections).toBe(1);
+		expect(gateway.connections[1].closeCode).toBeUndefined();
+		expect(getGatewaySender('manual-name')).toBeUndefined();
+		expect(getGatewaySender('prod-name')).toBeDefined();
+	});
+
+	it('manual run is refused when production claims the token while a stale run closes', async () => {
+		await activate({ workflowId: 'M', token: 'tok-1', mode: 'manual' });
+		await expect.poll(() => gateway.openConnections).toBe(1);
+
+		const rerun = activate({ workflowId: 'M', token: 'tok-1', mode: 'manual' });
+		const production = activate({ workflowId: 'A', token: 'tok-1' });
+		await expect(rerun).rejects.toThrow(MANUAL_ERROR);
+		await production;
+		await expect.poll(() => gateway.connections.length).toBe(2);
+		await expect.poll(() => gateway.openConnections).toBe(1);
+		await sleep(100);
+		expect(gateway.connections.length).toBe(2);
 	});
 });

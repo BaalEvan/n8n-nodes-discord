@@ -3,7 +3,10 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 import { alertText, createDmAlertSink } from '../nodes/DiscordTrigger/alerts';
 import { getCloseCodeMeta } from '../nodes/DiscordTrigger/closeCodes';
-import { DiscordGatewayConnection } from '../nodes/DiscordTrigger/DiscordGatewayConnection';
+import {
+	DiscordGatewayConnection,
+	type DiscordGatewayConnectionOptions,
+} from '../nodes/DiscordTrigger/DiscordGatewayConnection';
 import { FakeGateway } from './support/fakeGateway';
 import { createFakeTrigger, type FakeTrigger } from './support/fakeTrigger';
 
@@ -20,10 +23,12 @@ const fatal4014 = alertText('fatal', {
 describe('owner alerts', () => {
 	let gateway: FakeGateway;
 	let connections: DiscordGatewayConnection[];
+	let events: string[];
 
 	beforeEach(() => {
 		gateway = new FakeGateway();
 		connections = [];
+		events = [];
 	});
 
 	afterEach(async () => {
@@ -37,14 +42,27 @@ describe('owner alerts', () => {
 		return { trigger: createFakeTrigger({ gatewayUrl: url, token }), token };
 	}
 
-	function createConnection(trigger: FakeTrigger, token: string, userId = '42') {
-		const connection = new DiscordGatewayConnection(trigger, '*', noop, {
-			backoff,
-			token,
-			alertSink: userId ? createDmAlertSink(trigger, userId) : undefined,
-			alertAfterMs: 100,
-			outageCheckMs: 20,
-		});
+	function createConnection(
+		trigger: FakeTrigger,
+		token: string,
+		userId = '42',
+		overrides: DiscordGatewayConnectionOptions = {},
+	) {
+		const connection = new DiscordGatewayConnection(
+			trigger,
+			'*',
+			(data) => events.push(data.event as string),
+			{
+				backoff,
+				token,
+				alertSink: userId ? createDmAlertSink(trigger, userId) : undefined,
+				alertAfterMs: 100,
+				outageCheckMs: 20,
+				stablePeriodMs: 20,
+				identifySpacingMs: 0,
+				...overrides,
+			},
+		);
 		connections.push(connection);
 		return connection;
 	}
@@ -190,5 +208,58 @@ describe('owner alerts', () => {
 		await sleep(150);
 		expect(messagePosts(trigger)).toHaveLength(3);
 		expect(contents(trigger)[2]).toBe(alertText('recovered', { minutes: 1 }));
+	});
+
+	it('reports a long outage on recovery when every down alert failed', async () => {
+		const { trigger, token } = await setup('tok-rest-down');
+		const connection = createConnection(trigger, token, '42', { stablePeriodMs: 300 });
+		await connection.start();
+		trigger.failMessagePosts = Infinity;
+		const port = gateway.port;
+		await gateway.stop();
+		await expect.poll(() => messagePosts(trigger).length).toBeGreaterThanOrEqual(2);
+		await gateway.start(port);
+		await expect.poll(() => events.length).toBe(2);
+		trigger.failMessagePosts = 0;
+		const down = alertText('down', { minutes: 1 });
+		expect(contents(trigger).every((c) => c === down)).toBe(true);
+		await expect
+			.poll(() => trigger.sentMessages)
+			.toEqual([alertText('recovered', { minutes: 1 })]);
+		await sleep(150);
+		expect(trigger.sentMessages).toHaveLength(1);
+	});
+
+	it('keeps the outage clock running while sessions drop right after READY', async () => {
+		const { trigger, token } = await setup('tok-flap');
+		const connection = createConnection(trigger, token, '42', { stablePeriodMs: 300 });
+		gateway.closeAfterReady = 4000;
+		await connection.start();
+		await expect
+			.poll(() => trigger.sentMessages, { timeout: 2000 })
+			.toEqual([alertText('down', { minutes: 1 })]);
+		gateway.closeAfterReady = null;
+		await expect
+			.poll(() => trigger.sentMessages, { timeout: 2000 })
+			.toEqual([alertText('down', { minutes: 1 }), alertText('recovered', { minutes: 1 })]);
+	});
+
+	it('sends the fatal alert even when emitError throws', async () => {
+		const { trigger, token } = await setup('tok-fatal-throw');
+		trigger.emitError = () => {
+			throw new Error('emitError failed');
+		};
+		const connection = createConnection(trigger, token);
+		await connection.start();
+		gateway.closeAll(4014);
+		await expect.poll(() => contents(trigger)).toEqual([fatal4014]);
+	});
+
+	it('passes a timeout to the alert requests', async () => {
+		const { trigger } = await setup('tok-timeout');
+		const sink = createDmAlertSink(trigger, '42');
+		expect(await sink.send('down', 'a')).toBe(true);
+		expect(trigger.requests).toHaveLength(2);
+		expect(trigger.requests.map((r) => r.timeout)).toEqual([15000, 15000]);
 	});
 });
