@@ -64,9 +64,9 @@ describe('decideRoute', () => {
 		expect(inputs[0]).toMatchObject({ type: 4, custom_id: 'title', label: 'Title', style: 1, required: true, max_length: 40 });
 		expect(inputs[1]).toMatchObject({ custom_id: 'body', style: 2 });
 	});
-	it('button without a modal action runs the workflow', () => {
+	it('button without a modal action defers an update', () => {
 		expect(decideRoute(cls({ kind: 'component', action: 'archive', payload: 'x' }), row, OWNER)).toMatchObject({
-			route: 'deferCommand',
+			route: 'deferUpdate',
 			workflowId: 'wf1',
 		});
 	});
@@ -83,6 +83,22 @@ describe('decideRoute', () => {
 	});
 	it('an unparseable stored definition is treated as unavailable', () => {
 		expect(decideRoute(cls(), { workflowId: 'w', definition: '{' }, OWNER).route).toBe('unknownCommand');
+	});
+	it('refused component click gives refuse, ephemeral', () => {
+		const r = decideRoute(cls({ kind: 'component', action: 'archive', payload: 'x', userId: 'nobody' }), row, OWNER);
+		expect(r).toMatchObject({ route: 'refuse', ephemeral: true });
+	});
+	it('stale modal action does not open a modal', () => {
+		const r = decideRoute(cls({ kind: 'component', action: 'gone', payload: '7' }), row, OWNER);
+		expect(r.route).toBe('deferUpdate');
+		expect(r.modal).toBeUndefined();
+	});
+	it('refused autocomplete gives refuseAutocomplete', () => {
+		expect(decideRoute(cls({ kind: 'autocomplete', userId: 'nobody' }), row, OWNER).route).toBe('refuseAutocomplete');
+	});
+	it('autocomplete on an unavailable command gives refuseAutocomplete', () => {
+		expect(decideRoute(cls({ kind: 'autocomplete' }), null, OWNER).route).toBe('refuseAutocomplete');
+		expect(decideRoute(cls({ kind: 'autocomplete' }), { workflowId: 'w', definition: '{' }, OWNER).route).toBe('refuseAutocomplete');
 	});
 	it('unknown kind gives unknownCommand', () => {
 		expect(decideRoute(cls({ kind: 'unknown' }), row, OWNER).route).toBe('unknownCommand');

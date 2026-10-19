@@ -62,6 +62,10 @@ describe('toFollowups', () => {
 		expect(out[0].flags).toBe(64);
 		expect(out[1]).toEqual({ content: '', embeds: [{ title: 't' }], components: [], flags: 0 });
 	});
+	it('keeps a components-only followup', () => {
+		const out = toFollowups({ followups: [{ components: [{ type: 1 }] }] });
+		expect(out).toEqual([{ content: '', embeds: [], components: [{ type: 1 }], flags: 0 }]);
+	});
 	it('returns [] for no followups', () => {
 		expect(toFollowups(undefined)).toEqual([]);
 		expect(toFollowups({ content: 'x' })).toEqual([]);

@@ -19,7 +19,12 @@ function buildModal(customId, modal) {
 function decideRoute(classified, row, ownerId) {
 	const isCommand = classified.kind === 'command' || classified.kind === 'autocomplete';
 	const unavailable = {
-		route: isCommand || classified.kind === 'unknown' ? 'unknownCommand' : 'unknownComponent',
+		route:
+			classified.kind === 'autocomplete'
+				? 'refuseAutocomplete'
+				: isCommand || classified.kind === 'unknown'
+					? 'unknownCommand'
+					: 'unknownComponent',
 		ephemeral: true,
 	};
 	if (classified.kind === 'unknown') return unavailable;
@@ -28,7 +33,9 @@ function decideRoute(classified, row, ownerId) {
 	const parsed = parseDefinition(row.definition);
 	if (!parsed.ok) return unavailable;
 	const definition = parsed.definition;
-	if (!isAllowed(definition, classified, ownerId)) return { route: 'refuse', ephemeral: true };
+	if (!isAllowed(definition, classified, ownerId)) {
+		return { route: classified.kind === 'autocomplete' ? 'refuseAutocomplete' : 'refuse', ephemeral: true };
+	}
 	const ephemeral = definition.ephemeral === true;
 	const base = { ephemeral: ephemeral, workflowId: row.workflowId };
 	if (classified.kind === 'autocomplete') return { route: 'autocomplete', ephemeral: false, workflowId: row.workflowId };
@@ -40,6 +47,7 @@ function decideRoute(classified, row, ownerId) {
 			return { route: 'openModal', ephemeral: ephemeral, modal: buildModal(customId, modal), workflowId: row.workflowId };
 		}
 	}
+	if (classified.kind === 'component') return Object.assign({ route: 'deferUpdate' }, base);
 	return Object.assign({ route: 'deferCommand' }, base);
 }
 

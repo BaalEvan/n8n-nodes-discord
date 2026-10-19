@@ -26,7 +26,12 @@ function toFollowups(result) {
 	return followupList(result)
 		.slice(0, 10)
 		.filter(function (f) {
-			return f && (f.content || (Array.isArray(f.embeds) && f.embeds.length > 0));
+			return (
+				f &&
+				(f.content ||
+					(Array.isArray(f.embeds) && f.embeds.length > 0) ||
+					(Array.isArray(f.components) && f.components.length > 0))
+			);
 		})
 		.map(function (f) {
 			return {
