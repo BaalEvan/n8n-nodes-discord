@@ -22,7 +22,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yuniruyuni/n8n-nodes-discord.git"
+    "url": "git+https://github.com/BaalEvan/n8n-nodes-discord.git"
   },
   "scripts": {
     "build": "n8n-node build",
