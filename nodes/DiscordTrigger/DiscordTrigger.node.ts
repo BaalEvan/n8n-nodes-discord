@@ -18,6 +18,7 @@ import {
 	tokenFingerprint,
 	unregisterConnection,
 } from './connectionRegistry';
+import { createDmAlertSink } from './alerts';
 import { DiscordGatewayConnection } from './DiscordGatewayConnection';
 import { triggerProperties } from './events';
 import { getGatewaySender, registerGatewaySender, unregisterGatewaySender } from './gatewaySendBus';
@@ -105,9 +106,17 @@ export class DiscordTrigger implements INodeType {
 			this.emit([this.helpers.returnJsonArray([eventData])]);
 		};
 
+		const alertUserId = ((this.getNodeParameter('alertUserId', '') as string) || '').trim();
+		const alertAfterMinutes = Math.max(
+			1,
+			Number(this.getNodeParameter('alertAfterMinutes', 10)) || 10,
+		);
+
 		const connection = new DiscordGatewayConnection(this, event, onEvent, {
 			identifyBudget: identifyBudgetFor(fingerprint),
 			token: botToken,
+			alertSink: alertUserId ? createDmAlertSink(this, alertUserId) : undefined,
+			alertAfterMs: alertAfterMinutes * 60_000,
 		});
 
 		const sender = (payload: { op: number; d: unknown }) => connection.sendCommand(payload);

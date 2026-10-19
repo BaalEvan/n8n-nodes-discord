@@ -19,20 +19,25 @@ export class FakeGateway {
 
 	private server: WebSocketServer | null = null;
 	private baseUrl = '';
+	private lastPort = 0;
 	private sockets = new Set<WebSocket>();
 	private sequence = 0;
 	private sessions = 0;
+
+	get port(): number {
+		return this.lastPort;
+	}
 
 	get openConnections(): number {
 		return this.sockets.size;
 	}
 
-	async start(): Promise<string> {
-		const server = new WebSocketServer({ host: '127.0.0.1', port: 0 });
+	async start(port?: number): Promise<string> {
+		const server = new WebSocketServer({ host: '127.0.0.1', port: port ?? 0 });
 		this.server = server;
 		await new Promise<void>((resolve) => server.once('listening', () => resolve()));
-		const { port } = server.address() as { port: number };
-		this.baseUrl = `ws://127.0.0.1:${port}`;
+		this.lastPort = (server.address() as { port: number }).port;
+		this.baseUrl = `ws://127.0.0.1:${this.lastPort}`;
 		server.on('connection', (socket, request) => this.accept(socket, request.url ?? '/'));
 		return this.baseUrl;
 	}

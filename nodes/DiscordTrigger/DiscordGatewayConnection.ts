@@ -9,7 +9,9 @@ import {
 
 import { DISCORD_API_BASE_URL } from '../Discord/shared/constants';
 import { calculateIntents } from '../Discord/shared/intents';
-import type { AlertSink } from './alerts';
+import { alertText, claimFatalAlert, type AlertSink } from './alerts';
+import { getCloseCodeMeta } from './closeCodes';
+import { tokenFingerprint } from './connectionRegistry';
 import { FatalGatewayError } from './errors';
 import { shouldEmitGatewayEvent } from './events/policies';
 import {
@@ -30,6 +32,8 @@ const NODE_TYPE = 'n8n-nodes-discord.discordTrigger';
 const SESSION_KEYS = ['sessionId', 'sequence', 'resumeGatewayUrl'];
 const MAX_WAIT_STEP_MS = 1000;
 const AUTH_FAILURE_STATUSES = [401, 403];
+const DEFAULT_OUTAGE_CHECK_MS = 60_000;
+const MS_PER_MINUTE = 60_000;
 
 export interface DiscordGatewayConnectionOptions {
 	backoff?: BackoffOptions;
@@ -50,6 +54,14 @@ export class DiscordGatewayConnection {
 	private readonly identifyBudget: IdentifyBudget;
 	private readonly connectTimeoutMs?: number;
 	private readonly fixedToken?: string;
+	private readonly alertSink?: AlertSink;
+	private readonly alertAfterMs: number;
+	private readonly outageCheckMs: number;
+	private readonly now: () => number;
+	private fingerprint = 'unknown';
+	private downSince: number | null = null;
+	private downAlertSent = false;
+	private outageLoopRunning = false;
 
 	constructor(
 		private readonly trigger: ITriggerFunctions,
@@ -61,6 +73,10 @@ export class DiscordGatewayConnection {
 		this.identifyBudget = options.identifyBudget ?? new IdentifyBudget();
 		this.connectTimeoutMs = options.connectTimeoutMs;
 		this.fixedToken = options.token;
+		this.alertSink = options.alertSink;
+		this.alertAfterMs = options.alertAfterMs ?? 10 * MS_PER_MINUTE;
+		this.outageCheckMs = options.outageCheckMs ?? DEFAULT_OUTAGE_CHECK_MS;
+		this.now = options.now ?? Date.now;
 	}
 
 	async start(): Promise<void> {
@@ -68,10 +84,12 @@ export class DiscordGatewayConnection {
 			if (error instanceof FatalGatewayError) {
 				this.closing = true;
 				this.clearSessionState();
+				this.sendFatalAlert(error.closeCode);
 				throw error;
 			}
 			this.handleConnectFailure(error);
 		});
+		this.startOutageLoop();
 	}
 
 	async close(): Promise<void> {
@@ -96,6 +114,7 @@ export class DiscordGatewayConnection {
 		const token =
 			this.fixedToken ??
 			((await this.trigger.getCredentials('discordGatewayBotApi')).botToken as string);
+		this.fingerprint = tokenFingerprint(token);
 		const autoCalculateIntents = this.trigger.getNodeParameter('autoCalculateIntents') as boolean;
 		const selectedIntents = autoCalculateIntents
 			? []
@@ -144,10 +163,11 @@ export class DiscordGatewayConnection {
 			if (this.closing) return;
 
 			if (error instanceof FatalGatewayError) {
-				this.stopForGood(error.message);
+				this.stopForGood(error.message, error.closeCode);
 				return;
 			}
 
+			this.markDown();
 			LoggerProxy.warn('Discord Gateway connection attempt failed, retrying', {
 				error: error instanceof Error ? error.message : String(error),
 				attempt: this.reconnectAttempts + 1,
@@ -169,7 +189,7 @@ export class DiscordGatewayConnection {
 		}
 
 		if (info.fatal) {
-			this.stopForGood(new FatalGatewayError(info.fatal.code).message);
+			this.stopForGood(new FatalGatewayError(info.fatal.code).message, info.fatal.code);
 			return;
 		}
 
@@ -179,6 +199,7 @@ export class DiscordGatewayConnection {
 			this.clearSessionState();
 		}
 
+		this.markDown();
 		LoggerProxy.warn('Discord Gateway disconnected, reconnecting', {
 			canResume: info.canResume,
 			workflowId: this.trigger.getWorkflow().id,
@@ -211,7 +232,7 @@ export class DiscordGatewayConnection {
 		return !this.closing;
 	}
 
-	private stopForGood(message: string): void {
+	private stopForGood(message: string, code: number): void {
 		this.closing = true;
 		this.clearSessionState();
 		LoggerProxy.error('Discord Gateway closed with a non-recoverable code, not reconnecting', {
@@ -220,6 +241,67 @@ export class DiscordGatewayConnection {
 			nodeType: NODE_TYPE,
 		});
 		this.trigger.emitError(new NodeOperationError(this.trigger.getNode(), message));
+		this.sendFatalAlert(code);
+	}
+
+	private sendFatalAlert(code: number): void {
+		if (!this.alertSink) return;
+		if (!claimFatalAlert(`${this.fingerprint}:${code}`)) return;
+		const meta = getCloseCodeMeta(code);
+		const text = alertText('fatal', {
+			code,
+			name: meta?.name ?? 'UNKNOWN',
+			description: meta?.description ?? 'Non-recoverable close code.',
+		});
+		void this.alertSink.send('fatal', text).catch(() => false);
+	}
+
+	private markDown(): void {
+		if (this.downSince === null) {
+			this.downSince = this.now();
+		}
+	}
+
+	private startOutageLoop(): void {
+		if (!this.alertSink || this.outageLoopRunning || this.closing) return;
+		this.outageLoopRunning = true;
+		void this.runOutageLoop().finally(() => {
+			this.outageLoopRunning = false;
+		});
+	}
+
+	private async runOutageLoop(): Promise<void> {
+		while (await this.waitUnlessClosing(this.outageCheckMs)) {
+			try {
+				await this.checkOutage();
+			} catch {
+				continue;
+			}
+		}
+	}
+
+	private async checkOutage(): Promise<void> {
+		const sink = this.alertSink;
+		const downSince = this.downSince;
+		if (!sink || downSince === null || this.downAlertSent) return;
+		const elapsed = this.now() - downSince;
+		if (elapsed < this.alertAfterMs) return;
+		const sent = await sink.send('down', alertText('down', { minutes: toMinutes(elapsed) }));
+		if (sent && this.downSince !== null) {
+			this.downAlertSent = true;
+		}
+	}
+
+	private markUp(): void {
+		const downSince = this.downSince;
+		if (downSince === null) return;
+		const alerted = this.downAlertSent;
+		this.downSince = null;
+		this.downAlertSent = false;
+		if (alerted && this.alertSink) {
+			const text = alertText('recovered', { minutes: toMinutes(this.now() - downSince) });
+			void this.alertSink.send('recovered', text).catch(() => false);
+		}
 	}
 
 	private async getGatewayUrl(): Promise<string> {
@@ -257,6 +339,7 @@ export class DiscordGatewayConnection {
 	private handleEvent(eventName: string, data: IDataObject, raw: IDataObject): void {
 		this.persistSessionState();
 		if (eventName === 'READY' || eventName === 'RESUMED') {
+			this.markUp();
 			LoggerProxy.info('Discord Gateway connected', {
 				version: PACKAGE_VERSION,
 				sessionId: this.trigger.getWorkflowStaticData('node').sessionId,
@@ -322,6 +405,10 @@ export class DiscordGatewayConnection {
 			}
 		}
 	}
+}
+
+function toMinutes(ms: number): number {
+	return Math.max(1, Math.round(ms / MS_PER_MINUTE));
 }
 
 function httpStatusOf(error: unknown): number | undefined {

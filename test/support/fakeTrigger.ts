@@ -18,6 +18,8 @@ export interface FakeTrigger extends ITriggerFunctions {
 	rest: Array<{ method: string; url: string; body?: unknown }>;
 	staticData: IDataObject;
 	gatewayBotHttpStatus?: number;
+	failMessagePosts: number;
+	failChannelPosts: number;
 }
 
 const DEFAULT_PARAMS: Record<string, unknown> = {
@@ -40,6 +42,8 @@ export function createFakeTrigger(opts: FakeTriggerOptions): FakeTrigger {
 		rest: [] as Array<{ method: string; url: string; body?: unknown }>,
 		staticData,
 		gatewayBotHttpStatus: opts.gatewayBotHttpStatus,
+		failMessagePosts: 0,
+		failChannelPosts: 0,
 		getCredentials: async () => ({ botToken: opts.token ?? 'test-token' }),
 		getNodeParameter: (name: string, fallback?: unknown) =>
 			name in params ? params[name] : fallback,
@@ -74,8 +78,20 @@ export function createFakeTrigger(opts: FakeTriggerOptions): FakeTrigger {
 					}
 					return { url: opts.gatewayUrl };
 				}
-				if (method === 'POST' && url.endsWith('/users/@me/channels')) return { id: 'dm-1' };
-				if (method === 'POST' && url.endsWith('/channels/dm-1/messages')) return { id: 'm-1' };
+				if (method === 'POST' && url.endsWith('/users/@me/channels')) {
+					if (trigger.failChannelPosts > 0) {
+						trigger.failChannelPosts--;
+						throw new Error('fake channel POST failure');
+					}
+					return { id: 'dm-1' };
+				}
+				if (method === 'POST' && url.endsWith('/channels/dm-1/messages')) {
+					if (trigger.failMessagePosts > 0) {
+						trigger.failMessagePosts--;
+						throw new Error('fake message POST failure');
+					}
+					return { id: 'm-1' };
+				}
 				throw new Error(`fake trigger: unexpected request ${method} ${url}`);
 			},
 		},

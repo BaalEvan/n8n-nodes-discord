@@ -116,6 +116,21 @@ export const triggerProperties: INodeProperties[] = [
 			'Identifier used by the Discord Gateway Send node to route commands to this connection. Default "default" works if you only have one Discord Trigger active.',
 	},
 	{
+		displayName: 'Alert User ID',
+		name: 'alertUserId',
+		type: 'string',
+		default: '',
+		description: 'Discord user ID to DM on outages and fatal errors. Empty disables alerts.',
+	},
+	{
+		displayName: 'Alert After (Minutes)',
+		name: 'alertAfterMinutes',
+		type: 'number',
+		typeOptions: { minValue: 1 },
+		default: 10,
+		description: 'How long the Gateway must stay disconnected before the owner is alerted',
+	},
+	{
 		displayName:
 			'Some events require privileged intents that must be enabled separately in the Discord Developer Portal under your application → Bot → Privileged Gateway Intents: MESSAGE_CONTENT (needed to see message text in MESSAGE_CREATE / MESSAGE_UPDATE), GUILD_MEMBERS (needed for GUILD_MEMBER_ADD / UPDATE / REMOVE), GUILD_PRESENCES (needed for PRESENCE_UPDATE). If the intent is requested without being enabled, Discord closes the Gateway connection with code 4014.',
 		name: 'privilegedIntentsNotice',
