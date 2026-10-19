@@ -9,6 +9,7 @@ interface RegistryEntry {
 	fingerprint: string;
 	mode: ConnectionMode;
 	connection: DiscordGatewayConnection;
+	onTakeover?: () => void;
 }
 
 // Module-level registry of active connections keyed by workflow + node id + mode.
@@ -55,8 +56,9 @@ export function registerConnection(
 	fingerprint: string,
 	mode: ConnectionMode,
 	connection: DiscordGatewayConnection,
+	onTakeover?: () => void,
 ): void {
-	activeConnections.set(key, { fingerprint, mode, connection });
+	activeConnections.set(key, { fingerprint, mode, connection, onTakeover });
 }
 
 export function unregisterConnection(key: string, connection: DiscordGatewayConnection): void {
@@ -72,4 +74,16 @@ export function productionHolder(fingerprint: string): string | undefined {
 		}
 	}
 	return undefined;
+}
+
+export function takeOverManualConnections(fingerprint: string): Promise<void> {
+	const closing: Array<Promise<void>> = [];
+	for (const [key, entry] of activeConnections) {
+		if (entry.mode === 'manual' && entry.fingerprint === fingerprint) {
+			activeConnections.delete(key);
+			entry.onTakeover?.();
+			closing.push(entry.connection.close());
+		}
+	}
+	return Promise.all(closing).then(() => undefined);
 }

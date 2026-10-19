@@ -39,6 +39,7 @@ export interface DiscordGatewayConnectionOptions {
 	outageCheckMs?: number;
 	now?: () => number;
 	connectTimeoutMs?: number;
+	token?: string;
 }
 
 export class DiscordGatewayConnection {
@@ -48,6 +49,7 @@ export class DiscordGatewayConnection {
 	private readonly backoff: BackoffOptions;
 	private readonly identifyBudget: IdentifyBudget;
 	private readonly connectTimeoutMs?: number;
+	private readonly fixedToken?: string;
 
 	constructor(
 		private readonly trigger: ITriggerFunctions,
@@ -58,6 +60,7 @@ export class DiscordGatewayConnection {
 		this.backoff = options.backoff ?? DEFAULT_BACKOFF;
 		this.identifyBudget = options.identifyBudget ?? new IdentifyBudget();
 		this.connectTimeoutMs = options.connectTimeoutMs;
+		this.fixedToken = options.token;
 	}
 
 	async start(): Promise<void> {
@@ -90,8 +93,9 @@ export class DiscordGatewayConnection {
 	private async connectOnce(): Promise<void> {
 		if (this.closing) return;
 
-		const credentials = await this.trigger.getCredentials('discordGatewayBotApi');
-		const token = credentials.botToken as string;
+		const token =
+			this.fixedToken ??
+			((await this.trigger.getCredentials('discordGatewayBotApi')).botToken as string);
 		const autoCalculateIntents = this.trigger.getNodeParameter('autoCalculateIntents') as boolean;
 		const selectedIntents = autoCalculateIntents
 			? []

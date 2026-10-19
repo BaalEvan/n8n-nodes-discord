@@ -6,6 +6,7 @@ import {
 	registryKey,
 	tokenFingerprint,
 } from '../nodes/DiscordTrigger/connectionRegistry';
+import { getGatewaySender } from '../nodes/DiscordTrigger/gatewaySendBus';
 import { DiscordTrigger } from '../nodes/DiscordTrigger/DiscordTrigger.node';
 import { FakeGateway } from './support/fakeGateway';
 import { createFakeTrigger, type FakeTriggerOptions } from './support/fakeTrigger';
@@ -56,6 +57,7 @@ describe('connection registry', () => {
 		);
 		expect(gateway.connections.length).toBe(1);
 		expect(gateway.openConnections).toBe(1);
+		expect(gateway.connections[0].closeCode).toBeUndefined();
 	});
 
 	it('manual run on another token works and leaves production alone', async () => {
@@ -93,6 +95,60 @@ describe('connection registry', () => {
 		await activate({ workflowId: 'B', nodeId: 'n2', token: 'tok-1' });
 		await expect.poll(() => gateway.connections.length).toBe(2);
 		await expect.poll(() => gateway.openConnections).toBe(1);
+	});
+
+	it('production activation takes over a manual run on the same token', async () => {
+		const manual = await activate({ workflowId: 'M', token: 'tok-1', mode: 'manual' });
+		await expect.poll(() => gateway.connections.length).toBe(1);
+
+		await activate({ workflowId: 'A', token: 'tok-1' });
+		await expect.poll(() => gateway.connections.length).toBe(2);
+		await expect.poll(() => gateway.connections[0].closeCode).toBe(1000);
+		await expect.poll(() => gateway.openConnections).toBe(1);
+		expect(gateway.connections[1].closeCode).toBeUndefined();
+		expect(manual.fake.errors.map((e) => e.message)).toEqual([
+			'A production Discord Trigger took over this bot token.',
+		]);
+	});
+
+	it('manual run never replaces or removes a production sender', async () => {
+		await activate({ workflowId: 'A', token: 'tok-1', params: { connectionName: 'shared' } });
+		const productionSender = getGatewaySender('shared');
+		expect(productionSender).toBeDefined();
+
+		const manual = await activate({
+			workflowId: 'M',
+			token: 'tok-2',
+			mode: 'manual',
+			params: { connectionName: 'shared' },
+		});
+		expect(getGatewaySender('shared')).toBe(productionSender);
+		await manual.close();
+		expect(getGatewaySender('shared')).toBe(productionSender);
+	});
+
+	it('manual run registers a sender only when the name is free and releases it on close', async () => {
+		const manual = await activate({
+			workflowId: 'M',
+			token: 'tok-2',
+			mode: 'manual',
+			params: { connectionName: 'free-name' },
+		});
+		expect(getGatewaySender('free-name')).toBeDefined();
+		await manual.close();
+		expect(getGatewaySender('free-name')).toBeUndefined();
+	});
+
+	it('a fatal 401 at start releases the token', async () => {
+		await expect(
+			activate({ workflowId: 'A', nodeId: 'n1', token: 'tok-1', gatewayBotHttpStatus: 401 }),
+		).rejects.toThrow();
+		await activate({ workflowId: 'B', nodeId: 'n2', token: 'tok-1' });
+		await expect.poll(() => gateway.openConnections).toBe(1);
+	});
+
+	it('rejects a credential with no bot token', async () => {
+		await expect(activate({ token: '' })).rejects.toThrow('The Discord credential has no bot token.');
 	});
 
 	it('shares one identify budget per token across reconnections', async () => {

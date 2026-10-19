@@ -14,12 +14,13 @@ import {
 	productionHolder,
 	registerConnection,
 	registryKey,
+	takeOverManualConnections,
 	tokenFingerprint,
 	unregisterConnection,
 } from './connectionRegistry';
 import { DiscordGatewayConnection } from './DiscordGatewayConnection';
 import { triggerProperties } from './events';
-import { registerGatewaySender, unregisterGatewaySender } from './gatewaySendBus';
+import { getGatewaySender, registerGatewaySender, unregisterGatewaySender } from './gatewaySendBus';
 
 export class DiscordTrigger implements INodeType {
 	description: INodeTypeDescription = {
@@ -68,7 +69,11 @@ export class DiscordTrigger implements INodeType {
 		const connectionName = (this.getNodeParameter('connectionName', 'default') as string) || 'default';
 
 		const credentials = await this.getCredentials('discordGatewayBotApi');
-		const fingerprint = tokenFingerprint(credentials.botToken as string);
+		const botToken = credentials.botToken;
+		if (typeof botToken !== 'string' || botToken === '') {
+			throw new NodeOperationError(this.getNode(), 'The Discord credential has no bot token.');
+		}
+		const fingerprint = tokenFingerprint(botToken);
 		const mode = this.getMode() === 'manual' ? 'manual' : 'trigger';
 
 		const workflowId = this.getWorkflow().id ?? '';
@@ -84,11 +89,6 @@ export class DiscordTrigger implements INodeType {
 			}
 		}
 
-		// Defensive cleanup for cases where n8n's lifecycle does not invoke
-		// closeFunction before re-running trigger() (workflow re-activation, hot
-		// reload during dev, etc.).
-		// We include workflow ID for process-wide uniqueness, and node ID because
-		// it is persistent across renames.
 		await closeStaleConnection(key);
 
 		if (mode === 'trigger') {
@@ -107,36 +107,64 @@ export class DiscordTrigger implements INodeType {
 
 		const connection = new DiscordGatewayConnection(this, event, onEvent, {
 			identifyBudget: identifyBudgetFor(fingerprint),
+			token: botToken,
 		});
+
+		const sender = (payload: { op: number; d: unknown }) => connection.sendCommand(payload);
+		let senderRegistered = false;
+		const releaseSender = () => {
+			if (senderRegistered) {
+				unregisterGatewaySender(connectionName, sender);
+				senderRegistered = false;
+			}
+		};
+
+		// Production wins: a manual run on the same token is closed and told why.
+		const takeover =
+			mode === 'trigger' ? takeOverManualConnections(fingerprint) : Promise.resolve();
 
 		// Register the connection BEFORE connecting to ensure that if trigger()
 		// is called again while connect() is in progress, the next call can
 		// find and close this connection.
-		registerConnection(key, fingerprint, mode, connection);
+		registerConnection(
+			key,
+			fingerprint,
+			mode,
+			connection,
+			mode === 'manual'
+				? () => {
+						releaseSender();
+						this.emitError(
+							new NodeOperationError(
+								this.getNode(),
+								'A production Discord Trigger took over this bot token.',
+							),
+						);
+					}
+				: undefined,
+		);
 
-		// Manual runs never take over a connection name, so they cannot displace
-		// the production sender.
-		const sender = (payload: { op: number; d: unknown }) => connection.sendCommand(payload);
-		if (mode === 'trigger') {
+		// Manual runs only take a connection name nobody holds, so they never
+		// displace a production sender.
+		if (mode === 'trigger' || getGatewaySender(connectionName) === undefined) {
 			registerGatewaySender(connectionName, sender);
+			senderRegistered = true;
 		}
+
+		await takeover;
 
 		try {
 			await connection.start();
 		} catch (error) {
 			// If connection fails, make sure we don't leave a dead reference in the map
 			unregisterConnection(key, connection);
-			if (mode === 'trigger') {
-				unregisterGatewaySender(connectionName, sender);
-			}
+			releaseSender();
 			throw new NodeOperationError(this.getNode(), error as Error);
 		}
 
 		return {
 			closeFunction: async () => {
-				if (mode === 'trigger') {
-					unregisterGatewaySender(connectionName, sender);
-				}
+				releaseSender();
 				unregisterConnection(key, connection);
 				await connection.close();
 			},
