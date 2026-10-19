@@ -255,10 +255,14 @@ function tagCommand(row, channelId, options) {
 
 function stopPlan(row, channelId) {
 	if (!row || !row.pairingId) return { reply: SYNC_COPY.notSynced };
+	const forDelete = function (side) {
+		const e = endpoint(row, side);
+		return { side: side, channelId: e.channelId, webhookId: e.webhookId };
+	};
 	return {
 		pairingId: row.pairingId,
-		a: endpoint(row, 'a'),
-		b: endpoint(row, 'b'),
+		a: forDelete('a'),
+		b: forDelete('b'),
 		channelId: str(channelId),
 	};
 }

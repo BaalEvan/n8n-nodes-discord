@@ -25,11 +25,21 @@ const targets = (wf, from, output = 0) =>
 	((wf.connections[from] && wf.connections[from].main[output]) || []).map((c) => c.node);
 
 // Runs a built Code node with stand-ins for $ and $input. Items may carry .error and .binary.
-// $('X') for a node missing from `nodes` throws like n8n does for an unexecuted node.
+// $('X') for a node missing from `nodes` has isExecuted false and throws on first(), like n8n.
 function runCode(wf, name, { nodes = {}, input = [] } = {}) {
-	const pick = (items) => ({ first: () => items[0], all: () => items, item: items[0] });
+	const pick = (items) => ({
+		isExecuted: true,
+		first: () => items[0],
+		all: () => items,
+		item: items[0],
+	});
 	const $ = (n) => {
-		if (!nodes[n]) throw new Error(`Node '${n}' hasn't been executed`);
+		if (!nodes[n]) {
+			const fail = () => {
+				throw new Error(`Node '${n}' hasn't been executed`);
+			};
+			return { isExecuted: false, first: fail, all: fail };
+		}
 		return pick(nodes[n]);
 	};
 	const code = node(wf, name).parameters.jsCode;
@@ -74,6 +84,14 @@ const apiError = (code, message, status = 404) => ({
 const NONE_MENTIONS = { values: { parse: [], roles: '', users: '', repliedUser: true } };
 
 describe('Discord Command: sync', () => {
+	it('saves no successful or manual executions (they carry webhook tokens)', () => {
+		expect(cmd.settings).toEqual({
+			executionOrder: 'v1',
+			saveDataSuccessExecution: 'none',
+			saveManualExecutions: false,
+		});
+	});
+
 	it('is a tagged command with the recipe definition', () => {
 		expect(cmd.name).toBe('Discord Command: sync');
 		expect(cmd.tags.map((t) => t.name)).toEqual(['discord-command']);
@@ -461,6 +479,7 @@ describe('Discord Command: sync', () => {
 			expect(out.pairingId).toBe('p1');
 			expect(out.a.channelId).toBe(A);
 			expect(out.b.webhookId).toBe('wb');
+			expect(JSON.stringify(out)).not.toMatch(/[Tt]oken/);
 		});
 
 		it('deletes hooks, rows and posts both banners, once each', () => {
@@ -621,6 +640,7 @@ describe('Discord Listener: Sync Mirror', () => {
 			executionOrder: 'v1',
 			saveDataSuccessExecution: 'none',
 			saveDataErrorExecution: 'all',
+			saveManualExecutions: false,
 			timezone: 'Europe/Warsaw',
 		});
 		expect(node(mirror, 'When called by another workflow').parameters.inputSource).toBe(
@@ -909,10 +929,21 @@ describe('Discord Listener: Sync Mirror', () => {
 			expect(err && err.message).toContain('Invalid Form Body');
 			expect(err.message).not.toContain('tb');
 			expect(() =>
-				gone('update', apiError(10008, 'Unknown Message'), {
+				gone('update', apiError(50035, 'Invalid Form Body', 400), {
 					'Mirror Target': [{ json: prepared }],
 				}),
-			).toThrow(/Unknown Message/);
+			).toThrow(/Invalid Form Body/);
+		});
+		it('counts an edit of a mirror that no longer exists as done', () => {
+			const out = gone('update', apiError(10008, 'Unknown Message'), {
+				'Mirror Target': [{ json: { ...prepared, mirrorMessageId: 'm1' } }],
+			});
+			expect(out[0].json.action).toBe('done');
+		});
+		it('checks Collect Files with isExecuted instead of catching a throw', () => {
+			const code = node(mirror, 'Gone?').parameters.jsCode;
+			expect(code).toContain("$('Collect Files').isExecuted");
+			expect(code).not.toMatch(/catch \(/);
 		});
 		it('routes recreate to the hook chain and done to Remove Map', () => {
 			expect(targets(mirror, 'Gone?')).toEqual(['Gone Action']);
@@ -1001,6 +1032,8 @@ describe('Discord Listener: Sync Mirror', () => {
 					input: [err],
 				});
 			expect(run('delete', apiError(10008, 'Unknown Message'))).toEqual([{ json: { done: true } }]);
+			expect(run('update', apiError(10008, 'Unknown Message'))).toEqual([{ json: { done: true } }]);
+			expect(() => run('update', apiError(10015, 'Unknown Webhook'))).toThrow(/Unknown Webhook/);
 			expect(() => run('delete', apiError(10015, 'Unknown Webhook'))).toThrow(/Unknown Webhook/);
 			expect(() => run('create', apiError(10015, 'Unknown Webhook'))).toThrow(/Unknown Webhook/);
 		});

@@ -656,7 +656,7 @@
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/sync.js lib/syncMirror.js\nconst event = $('Filter').first().json.event;\nconst err = discordError($input.first());\nlet ctx;\nlet binary;\nif (event === 'create') {\n\tlet collected = null;\n\ttry {\n\t\tcollected = $('Collect Files').first();\n\t} catch (e) {\n\t\tcollected = null;\n\t}\n\tif (collected) {\n\t\tctx = collected.json;\n\t\tbinary = collected.binary;\n\t} else {\n\t\tctx = $('Prepare').first().json;\n\t}\n} else {\n\tctx = $('Mirror Target').first().json;\n}\nconst action = goneDecision(event, err);\nif (action === 'fail') {\n\tthrow new Error('Sync mirror ' + event + ' failed: ' + err.message + ' (Discord code ' + (err.code || 'none') + ', HTTP ' + (err.status || 'unknown') + ')');\n}\nconst item = { json: Object.assign({}, ctx, { event: event, action: action }) };\nif (binary) item.binary = binary;\nreturn [item];"
+				"jsCode": "//@inline lib/sync.js lib/syncMirror.js\nconst event = $('Filter').first().json.event;\nconst err = discordError($input.first());\nlet ctx;\nlet binary;\nif (event === 'create') {\n\tconst collected = $('Collect Files').isExecuted ? $('Collect Files').first() : null;\n\tif (collected) {\n\t\tctx = collected.json;\n\t\tbinary = collected.binary;\n\t} else {\n\t\tctx = $('Prepare').first().json;\n\t}\n} else {\n\tctx = $('Mirror Target').first().json;\n}\nconst action = goneDecision(event, err);\nif (action === 'fail') {\n\tthrow new Error('Sync mirror ' + event + ' failed: ' + err.message + ' (Discord code ' + (err.code || 'none') + ', HTTP ' + (err.status || 'unknown') + ')');\n}\nconst item = { json: Object.assign({}, ctx, { event: event, action: action }) };\nif (binary) item.binary = binary;\nreturn [item];"
 			}
 		},
 		{
@@ -1293,7 +1293,7 @@
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/sync.js lib/syncMirror.js\nconst event = $('Filter').first().json.event;\nconst err = discordError($input.first());\nif (event === 'delete' && isUnknownMessage(err)) return [{ json: { done: true } }];\nthrow new Error('Sync mirror ' + event + ' retry failed: ' + err.message + ' (Discord code ' + (err.code || 'none') + ', HTTP ' + (err.status || 'unknown') + ')');"
+				"jsCode": "//@inline lib/sync.js lib/syncMirror.js\nconst event = $('Filter').first().json.event;\nconst err = discordError($input.first());\nif ((event === 'delete' || event === 'update') && isUnknownMessage(err)) return [{ json: { done: true } }];\nthrow new Error('Sync mirror ' + event + ' retry failed: ' + err.message + ' (Discord code ' + (err.code || 'none') + ', HTTP ' + (err.status || 'unknown') + ')');"
 			}
 		},
 		{
@@ -1890,6 +1890,7 @@
 		"executionOrder": "v1",
 		"saveDataSuccessExecution": "none",
 		"saveDataErrorExecution": "all",
+		"saveManualExecutions": false,
 		"timezone": "Europe/Warsaw"
 	}
 }

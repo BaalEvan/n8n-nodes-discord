@@ -414,4 +414,10 @@ describe('stopPlan', () => {
 		expect(out.a.webhookId).toBe('wa');
 		expect(out.b.webhookId).toBe('wb');
 	});
+	it('carries no webhook token, only what a delete by ID needs', () => {
+		const out = stopPlan(row(), A);
+		expect(out.a).toEqual({ side: 'a', channelId: A, webhookId: 'wa' });
+		expect(out.b).toEqual({ side: 'b', channelId: B, webhookId: 'wb' });
+		expect(JSON.stringify(out)).not.toMatch(/[Tt]oken|"ta"|"tb"/);
+	});
 });

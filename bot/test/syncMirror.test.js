@@ -22,6 +22,7 @@ const A = '111111111111111111';
 const B = '222222222222222222';
 const GA = '333333333333333333';
 const USER_ID = '181510541934592000';
+const NL = String.fromCharCode(10);
 
 const pairing = (extra = {}) => ({
 	pairingId: 'p1',
@@ -83,6 +84,17 @@ describe('filterEvent', () => {
 	it('passes deletes without an author', () => {
 		const m = { id: '1', channel_id: A, guild_id: GA };
 		expect(filterEvent({ event: 'delete', message: m })).toEqual({ event: 'delete', m });
+	});
+	it('drops system-type messages on create, keeping default and reply messages', () => {
+		for (const type of [6, 7, 8, 18, 46]) {
+			expect(filterEvent({ event: 'create', message: msg({ type }) }), 'type ' + type).toBe(null);
+		}
+		expect(filterEvent({ event: 'create', message: msg({ type: 0 }) })).not.toBe(null);
+		expect(filterEvent({ event: 'create', message: msg({ type: 19 }) })).not.toBe(null);
+		expect(filterEvent({ event: 'create', message: msg() })).not.toBe(null);
+		expect(
+			filterEvent({ event: 'delete', message: { id: '1', channel_id: A, type: 18 } }),
+		).not.toBe(null);
 	});
 	it('drops unknown events', () => {
 		expect(filterEvent({ event: 'bulk', message: msg() })).toBe(null);
@@ -299,10 +311,30 @@ describe('mirrorTarget', () => {
 			mirrorTarget('delete', { ...map, mirrorChannelId: A }, pairing(), { id: 's1' }).target.side,
 		).toBe('a');
 	});
-	it('cuts edited text to 2000 characters', () => {
-		expect(
-			mirrorTarget('update', map, pairing(), msg({ content: 'x'.repeat(3000) })).content,
-		).toHaveLength(2000);
+	it('cuts edited text like create does, with …', () => {
+		const out = mirrorTarget('update', map, pairing(), msg({ content: 'x'.repeat(3000) }));
+		expect(out.content).toHaveLength(2000);
+		expect(out.content.endsWith('…')).toBe(true);
+	});
+	it('appends the links of files too big to upload, as create does', () => {
+		const m = msg({
+			content: 'edited',
+			attachments: [
+				{ id: '1', filename: 'a.png', size: 10, url: 'https://cdn/a.png' },
+				{ id: '2', filename: 'b.mp4', size: 20 * 1024 * 1024, url: 'https://cdn/b.mp4' },
+			],
+		});
+		expect(mirrorTarget('update', map, pairing(), m).content).toBe(
+			'edited' + NL + 'https://cdn/b.mp4',
+		);
+		const long = msg({ content: 'y'.repeat(3000), attachments: m.attachments });
+		const out = mirrorTarget('update', map, pairing(), long).content;
+		expect(out).toHaveLength(2000);
+		expect(out.endsWith('…' + NL + 'https://cdn/b.mp4')).toBe(true);
+		expect(out).toBe(prepareCreate(long, pairing()).content);
+	});
+	it('gives empty content for a delete payload', () => {
+		expect(mirrorTarget('delete', map, pairing(), { id: 's1', channel_id: A }).content).toBe('');
 	});
 	it('returns null without a matching endpoint', () => {
 		expect(mirrorTarget('update', { ...map, mirrorChannelId: '9' }, pairing(), msg())).toBe(null);
@@ -327,7 +359,8 @@ describe('webhook errors', () => {
 		expect(goneDecision('create', { code: 10015, status: 404 })).toBe('recreate');
 		expect(goneDecision('update', { code: 0, status: 404 })).toBe('recreate');
 		expect(goneDecision('delete', { code: 10008, status: 404 })).toBe('done');
-		expect(goneDecision('update', { code: 10008, status: 404 })).toBe('fail');
+		expect(goneDecision('update', { code: 10008, status: 404 })).toBe('done');
+		expect(goneDecision('update', { code: 50035, status: 400 })).toBe('fail');
 		expect(goneDecision('create', { code: 50035, status: 400 })).toBe('fail');
 	});
 });

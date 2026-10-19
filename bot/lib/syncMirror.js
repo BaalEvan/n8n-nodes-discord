@@ -3,6 +3,7 @@ const MAX_FILES = 10;
 const MAX_CONTENT = 2000;
 const RETENTION_DAYS = 14;
 const MIRROR_EVENTS = ['create', 'update', 'delete'];
+const USER_MESSAGE_TYPES = [0, 19];
 
 function filterEvent(input) {
 	const event = input && input.event;
@@ -11,6 +12,9 @@ function filterEvent(input) {
 	if (!m || !m.channel_id) return null;
 	if (event !== 'delete') {
 		if (!m.author || m.author.bot || m.author.system || m.webhook_id) return null;
+	}
+	if (event === 'create' && m.type !== undefined && USER_MESSAGE_TYPES.indexOf(m.type) === -1) {
+		return null;
 	}
 	if (event === 'update' && !m.edited_timestamp) return null;
 	return { event: event, m: m };
@@ -167,14 +171,14 @@ function mirrorTarget(event, map, p, m) {
 	if (String(p.aChannelId) === ch) side = 'a';
 	else if (String(p.bChannelId) === ch) side = 'b';
 	else return null;
-	const text = String((m && m.content) || '');
+	const msg = m || {};
 	return {
 		event: event,
 		pairingId: p.pairingId,
 		sourceMessageId: map.sourceMessageId,
 		mirrorMessageId: map.mirrorMessageId,
 		target: target(p, side),
-		content: text.length > MAX_CONTENT ? text.slice(0, MAX_CONTENT) : text,
+		content: mirrorContent(msg.content, splitAttachments(msg.attachments).links),
 	};
 }
 
@@ -188,7 +192,7 @@ function isUnknownMessage(err) {
 
 function goneDecision(event, err) {
 	if (isWebhookGone(err)) return 'recreate';
-	if (event === 'delete' && isUnknownMessage(err)) return 'done';
+	if ((event === 'delete' || event === 'update') && isUnknownMessage(err)) return 'done';
 	return 'fail';
 }
 
