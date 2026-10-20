@@ -214,11 +214,11 @@ describe('importDev skip', () => {
 		expect(helperSave).toBeLessThan(clSave);
 	});
 
-	it('tags only the seven command workflows, not the helper or the listener', async () => {
+	it('tags only the eight command workflows, not the helper or the listener', async () => {
 		const calls = stubApi();
 		await run(['router', 'sync']);
 		const tagged = calls.filter((c) => c.method === 'PUT' && c.p.endsWith('/tags'));
-		expect(tagged).toHaveLength(7);
+		expect(tagged).toHaveLength(8);
 	});
 
 	it('adds webhookBase only when it is missing', async () => {
@@ -269,8 +269,7 @@ describe('importDev skip', () => {
 				return {
 					ok: true,
 					status: 200,
-					text: async () =>
-						JSON.stringify({ data: [{ key: 'registerGlobal', value: 'false' }] }),
+					text: async () => JSON.stringify({ data: [{ key: 'registerGlobal', value: 'false' }] }),
 				};
 			}
 			return base(url, init);
@@ -285,6 +284,12 @@ describe('importDev skip', () => {
 		expect(ORDER).toContain('commands/changelog');
 		expect(PUBLISH.has('commands/changelog')).toBe(true);
 		expect(ORDER.indexOf('commands/changelog')).toBeLessThan(ORDER.indexOf('router'));
+	});
+
+	it('imports the prompt command before the router', () => {
+		expect(ORDER).toContain('commands/prompt');
+		expect(PUBLISH.has('commands/prompt')).toBe(true);
+		expect(ORDER.indexOf('commands/prompt')).toBeLessThan(ORDER.indexOf('router'));
 	});
 
 	it('creates the sync tables with typed columns', async () => {
@@ -392,7 +397,7 @@ describe('importDev skip', () => {
 	it('rejects an unknown key and lists the valid ones, before any request', async () => {
 		const calls = stubApi();
 		await expect(run(['routr'])).rejects.toThrow(
-			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, helpers/clickup-get-task, commands/changelog, commands/cl, commands/parse, commands/preview, commands/sync, listeners/sync-mirror, router',
+			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, helpers/clickup-get-task, commands/changelog, commands/cl, commands/parse, commands/preview, commands/prompt, commands/sync, listeners/sync-mirror, router',
 		);
 		expect(calls).toEqual([]);
 	});

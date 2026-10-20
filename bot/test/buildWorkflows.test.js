@@ -141,6 +141,7 @@ describe('built workflows', () => {
 				'commands/cl',
 				'commands/parse',
 				'commands/preview',
+				'commands/prompt',
 				'commands/sync',
 				'helpers/clickup-get-task',
 				'listeners/sync-mirror',
@@ -161,6 +162,7 @@ describe('built workflows', () => {
 		expect(built['commands/preview'].name).toBe('Discord Command: preview');
 		expect(built['commands/cl'].name).toBe('Discord Command: cl');
 		expect(built['commands/changelog'].name).toBe('Discord Command: changelog');
+		expect(built['commands/prompt'].name).toBe('Discord Command: prompt');
 		expect(built['helpers/clickup-get-task'].name).toBe('Discord Helper: ClickUp Get Task');
 		expect(built['commands/sync'].name).toBe('Discord Command: sync');
 		expect(built['listeners/sync-mirror'].name).toBe('Discord Listener: Sync Mirror');
@@ -1488,6 +1490,137 @@ describe('changelog command', () => {
 	});
 });
 
+describe('prompt command', () => {
+	const wf = built['commands/prompt'];
+	const TRIGGER = 'When called by another workflow';
+	const build = (options, value = 'https://hook.example/') =>
+		runCode(wf, 'Build URL', {
+			nodes: { [TRIGGER]: [{ json: { mode: 'command', interaction: { options } } }] },
+			input: [{ json: { key: 'webhookBase', value } }],
+		});
+
+	it('is a tagged discord-command, global, open to everyone, public', () => {
+		expect(wf.tags.map((t) => t.name)).toEqual(['discord-command']);
+		const parsed = parseDefinition(node(wf, 'Command Definition').parameters.jsonOutput);
+		expect(parsed.ok).toBe(true);
+		expect(parsed.definition).toEqual({
+			name: 'prompt',
+			description: 'Send a prompt to the AI',
+			options: [
+				{ type: 3, name: 'prompt', description: 'What to ask', required: true },
+				{
+					type: 3,
+					name: 'preset',
+					description: 'How to answer (leave empty for the default)',
+					required: false,
+					choices: [
+						{ name: 'Copy back (no AI)', value: 'copy' },
+						{ name: 'Final Fantasy XIV helper', value: 'ffxiv' },
+						{ name: 'Hotel Galactic assistant', value: 'hg' },
+						{ name: 'Smart (Gemini Pro)', value: 'smart' },
+						{ name: 'Steam discussions', value: 'steam' },
+						{ name: 'Bug report → JIRA ticket', value: 'aom' },
+						{ name: 'Board task summary', value: 'tasks' },
+						{ name: 'What game to play', value: 'game' },
+						{ name: 'Archi (creative writing, PL)', value: 'archi' },
+					],
+				},
+			],
+			ephemeral: false,
+			scope: 'global',
+			contexts: [0, 1, 2],
+			integration_types: [0, 1],
+			whitelist: { everyone: true, users: [], roles: [] },
+		});
+	});
+
+	it('wires command -> Load Config -> Build URL -> Has Hook -> Ask AI -> Reply / Reply Failed', () => {
+		expect(targets(wf, 'Switch on mode', 0)).toEqual(['Load Config']);
+		expect(targets(wf, 'Load Config')).toEqual(['Build URL']);
+		expect(targets(wf, 'Build URL')).toEqual(['Has Hook']);
+		expect(targets(wf, 'Has Hook', 0)).toEqual(['Ask AI']);
+		expect(targets(wf, 'Has Hook', 1)).toEqual(['Reply Not Configured']);
+		expect(targets(wf, 'Ask AI', 0)).toEqual(['Reply']);
+		expect(targets(wf, 'Ask AI', 1)).toEqual(['Reply Failed']);
+		for (const n of ['Reply', 'Reply Failed', 'Reply Not Configured'])
+			expect(targets(wf, n)).toEqual([]);
+	});
+
+	it('Load Config reads webhookBase from discord_config', () => {
+		const n = node(wf, 'Load Config');
+		expect(n.type).toBe('n8n-nodes-base.dataTable');
+		expect(n.parameters.dataTableId.value).toBe('discord_config');
+		expect(n.parameters.filters.conditions).toEqual([
+			{ keyName: 'key', condition: 'eq', keyValue: 'webhookBase' },
+		]);
+	});
+
+	it('Ask AI is an unauthenticated GET returning text, 600s timeout, error output', () => {
+		const n = node(wf, 'Ask AI');
+		expect(n.type).toBe('n8n-nodes-base.httpRequest');
+		expect(n.parameters.method).toBe('GET');
+		expect(n.parameters.url).toBe('={{ $json.url }}');
+		expect(n.parameters.authentication ?? 'none').toBe('none');
+		expect(n.credentials).toBeUndefined();
+		expect(n.parameters.options.response.response.responseFormat).toBe('text');
+		expect(n.parameters.options.timeout).toBe(600000);
+		expect(n.onError).toBe('continueErrorOutput');
+	});
+
+	it('Build URL encodes the prompt and adds the preset only when given', () => {
+		const head = 'https://hook.example/webhook/gemini-hook?prompt=';
+		expect(build({ prompt: 'hi' })[0].json.url).toBe(`${head}hi`);
+		expect(build({ prompt: 'a&b #c? 😀 zażółć', preset: 'hg' })[0].json.url).toBe(
+			`${head}${encodeURIComponent('a&b #c? 😀 zażółć')}&preset=hg`,
+		);
+	});
+
+	it('Build URL gives an empty url when webhookBase is missing', () => {
+		const r = runCode(wf, 'Build URL', {
+			nodes: { [TRIGGER]: [{ json: { interaction: { options: { prompt: 'x' } } } }] },
+			input: [{ json: {} }],
+		});
+		expect(r).toEqual([{ json: { url: '' } }]);
+	});
+
+	it('routes an empty url to a clear reply without calling the hook', () => {
+		const cond = node(wf, 'Has Hook').parameters.conditions.conditions[0];
+		expect(cond.leftValue).toBe("={{ $json.url || '' }}");
+		expect(cond.operator).toMatchObject({ type: 'string', operation: 'notEmpty' });
+		expect(node(wf, 'Reply Not Configured').parameters.jsonOutput).toContain(
+			"Prompt hook isn't configured (discord_config row webhookBase is missing).",
+		);
+	});
+
+	it('Reply builds content, embeds and followups from the body', () => {
+		const reply = (body) => runCode(wf, 'Reply', { input: [{ json: { body } }] })[0].json;
+		expect(reply('hello')).toEqual({ content: 'hello', embeds: [], followups: [] });
+		expect(reply('')).toMatchObject({ content: '(empty response)' });
+		expect(reply('w '.repeat(2500)).followups.length).toBeGreaterThanOrEqual(2);
+		const json = reply(JSON.stringify({ Text: 'hi', Embeds: ['a', 'b'] }));
+		expect(json.embeds).toEqual([{ description: 'a' }, { description: 'b' }]);
+	});
+
+	it('Reply Failed reads status or message from the error output', () => {
+		const reply = (error) => runCode(wf, 'Reply Failed', { input: [{ json: { error } }] });
+		expect(reply({ httpCode: '500' })).toEqual([
+			{ json: { content: 'Failed to get an AI response. Status: 500' } },
+		]);
+		expect(reply({ message: 'ENOTFOUND' })).toEqual([
+			{ json: { content: 'Error contacting the AI service: ENOTFOUND' } },
+		]);
+	});
+
+	it('has no Discord nodes, no credentials and no unresolved inline marker', () => {
+		expect(wf.nodes.filter((n) => n.type.startsWith('CUSTOM.'))).toEqual([]);
+		expect(wf.nodes.filter((n) => n.credentials)).toEqual([]);
+		for (const n of codeNodes(wf)) {
+			expect(n.parameters.jsCode).not.toContain('//@inline');
+			expect(n.parameters.jsCode).not.toContain('new URL');
+		}
+	});
+});
+
 describe('writeAll', () => {
 	it('writes one importable JSON file per template', () => {
 		const out = fs.mkdtempSync(path.join(os.tmpdir(), 'bot-dist-'));
@@ -1498,6 +1631,7 @@ describe('writeAll', () => {
 			'commands/cl.json',
 			'commands/parse.json',
 			'commands/preview.json',
+			'commands/prompt.json',
 			'commands/sync.json',
 			'helpers/clickup-get-task.json',
 			'listeners/sync-mirror.json',
