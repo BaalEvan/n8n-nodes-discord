@@ -171,51 +171,12 @@
 			"executeOnce": true
 		},
 		{
-			"id": "29cad277-225c-4ff2-a29b-ab235886d5e8",
-			"name": "Guilds",
-			"type": "n8n-nodes-base.code",
-			"typeVersion": 2,
-			"position": [
-				1320,
-				400
-			],
-			"parameters": {
-				"mode": "runOnceForAllItems",
-				"language": "javaScript",
-				"jsCode": "//@inline lib/syncApi.js\nconst built = $('Build').first().json;\nconst config = configValues($('Load Config').all());\nconst guildIds = parseGuildIds(config.guildIds);\nconst applicationId = String(($('Get Application').first().json || {}).id || '');\nif (!applicationId) throw new Error('Get Application returned no application id');\nreturn guildIds.map(function (guildId) {\n\treturn { json: { guildId: guildId, applicationId: applicationId, commands: built.guildCommands } };\n});"
-			}
-		},
-		{
-			"id": "33327b66-dd9b-430b-a5fb-44900a9f286d",
-			"name": "Register",
-			"type": "CUSTOM.discord",
-			"typeVersion": 1,
-			"position": [
-				1540,
-				400
-			],
-			"parameters": {
-				"authentication": "bot",
-				"resource": "applicationCommand",
-				"operation": "bulkOverwriteGuild",
-				"applicationId": "={{ $json.applicationId }}",
-				"guildId": "={{ $json.guildId }}",
-				"payload": "={{ JSON.stringify($json.commands) }}"
-			},
-			"credentials": {
-				"discordGatewayBotApi": {
-					"name": "Discord Bot (live)"
-				}
-			},
-			"alwaysOutputData": true
-		},
-		{
 			"id": "193a6212-f1bd-40d9-8e72-29ec0f66e398",
 			"name": "Global",
 			"type": "n8n-nodes-base.code",
 			"typeVersion": 2,
 			"position": [
-				1760,
+				1320,
 				400
 			],
 			"parameters": {
@@ -230,7 +191,7 @@
 			"type": "n8n-nodes-base.if",
 			"typeVersion": 2.3,
 			"position": [
-				1980,
+				1540,
 				400
 			],
 			"parameters": {
@@ -264,7 +225,7 @@
 			"type": "CUSTOM.discord",
 			"typeVersion": 1,
 			"position": [
-				2200,
+				1760,
 				300
 			],
 			"parameters": {
@@ -278,7 +239,47 @@
 				"discordGatewayBotApi": {
 					"name": "Discord Bot (live)"
 				}
+			},
+			"alwaysOutputData": true
+		},
+		{
+			"id": "29cad277-225c-4ff2-a29b-ab235886d5e8",
+			"name": "Guilds",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1980,
+				400
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/syncApi.js\nconst built = $('Build').first().json;\nconst config = configValues($('Load Config').all());\nconst guildIds = parseGuildIds(config.guildIds);\nconst applicationId = String(($('Get Application').first().json || {}).id || '');\nif (!applicationId) throw new Error('Get Application returned no application id');\nreturn guildIds.map(function (guildId) {\n\treturn { json: { guildId: guildId, applicationId: applicationId, commands: built.guildCommands } };\n});"
 			}
+		},
+		{
+			"id": "33327b66-dd9b-430b-a5fb-44900a9f286d",
+			"name": "Register",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2200,
+				400
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "applicationCommand",
+				"operation": "bulkOverwriteGuild",
+				"applicationId": "={{ $json.applicationId }}",
+				"guildId": "={{ $json.guildId }}",
+				"payload": "={{ JSON.stringify($json.commands) }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"alwaysOutputData": true
 		},
 		{
 			"id": "fc68b06f-adb8-4777-a166-0f1b4dd4ba03",
@@ -509,7 +510,7 @@
 			"main": [
 				[
 					{
-						"node": "Guilds",
+						"node": "Global",
 						"type": "main",
 						"index": 0
 					}
@@ -531,7 +532,7 @@
 			"main": [
 				[
 					{
-						"node": "Global",
+						"node": "Replace Table",
 						"type": "main",
 						"index": 0
 					}
@@ -611,7 +612,7 @@
 				],
 				[
 					{
-						"node": "Replace Table",
+						"node": "Guilds",
 						"type": "main",
 						"index": 0
 					}
@@ -622,7 +623,7 @@
 			"main": [
 				[
 					{
-						"node": "Replace Table",
+						"node": "Guilds",
 						"type": "main",
 						"index": 0
 					}

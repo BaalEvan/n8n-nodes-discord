@@ -325,6 +325,10 @@ describe('command workflows', () => {
 			input: [{ json: { registered: 3, global: 2, globalSkipped: false, skipped: [], guilds: ['g'] } }],
 		});
 		expect(out).toEqual([{ json: { content: 'Registered 3 server commands and 2 global commands.' } }]);
+		const one = runCode(built['reload-commands'], 'Reply', {
+			input: [{ json: { registered: 1, global: 1, globalSkipped: false, skipped: [], guilds: ['g'] } }],
+		});
+		expect(one[0].json.content).toBe('Registered 1 server command and 1 global command.');
 		const off = runCode(built['reload-commands'], 'Reply', {
 			input: [{ json: { registered: 3, global: 2, globalSkipped: true, skipped: [], guilds: ['g'] } }],
 		});
@@ -830,11 +834,11 @@ describe('sync', () => {
 			'Stop and Error',
 			'Load Config',
 			'Get Application',
-			'Guilds',
-			'Register',
 			'Global',
 			'Global Enabled',
 			'Register Global',
+			'Guilds',
+			'Register',
 			'Replace Table',
 			'Has Rows',
 			'Table Rows',
@@ -848,11 +852,14 @@ describe('sync', () => {
 		expect(targets(wf, 'Has Rows', 0)).toEqual(['Table Rows']);
 		expect(targets(wf, 'Has Rows', 1)).toEqual(['Report']);
 		expect(targets(wf, 'Insert Rows')).toEqual(['Report']);
-		expect(targets(wf, 'Register')).toEqual(['Global']);
+		expect(targets(wf, 'Load Config')).toEqual(['Get Application']);
+		expect(targets(wf, 'Get Application')).toEqual(['Global']);
 		expect(targets(wf, 'Global')).toEqual(['Global Enabled']);
 		expect(targets(wf, 'Global Enabled', 0)).toEqual(['Register Global']);
-		expect(targets(wf, 'Global Enabled', 1)).toEqual(['Replace Table']);
-		expect(targets(wf, 'Register Global')).toEqual(['Replace Table']);
+		expect(targets(wf, 'Global Enabled', 1)).toEqual(['Guilds']);
+		expect(targets(wf, 'Register Global')).toEqual(['Guilds']);
+		expect(targets(wf, 'Guilds')).toEqual(['Register']);
+		expect(targets(wf, 'Register')).toEqual(['Replace Table']);
 	});
 
 	it('Load Config reads guildIds and registerGlobal, and the application is read once', () => {
@@ -877,6 +884,7 @@ describe('sync', () => {
 			payload: '={{ JSON.stringify($json.commands) }}',
 		});
 		expect(n.credentials).toEqual({ discordGatewayBotApi: { name: 'Discord Bot (live)' } });
+		expect(n.alwaysOutputData).toBe(true);
 		const cond = node(wf, 'Global Enabled').parameters.conditions;
 		expect(cond.conditions).toHaveLength(1);
 		expect(cond.conditions[0].leftValue).toBe('={{ $json.registerGlobal }}');

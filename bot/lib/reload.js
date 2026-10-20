@@ -1,3 +1,7 @@
+function count(n, noun) {
+	return n + ' ' + noun + (n === 1 ? '' : 's');
+}
+
 function reloadReply(report) {
 	const r = report && typeof report === 'object' ? report : {};
 	if (r.error !== undefined && r.error !== null) {
@@ -7,12 +11,13 @@ function reloadReply(report) {
 	if (typeof r.registered !== 'number') {
 		return { content: 'Sync returned no report. Check the Discord Sync execution log.' };
 	}
-	let content = 'Registered ' + r.registered + ' commands.';
+	let content = 'Registered ' + count(r.registered, 'command') + '.';
 	if (typeof r.global === 'number') {
 		content = r.globalSkipped
-			? 'Registered ' + r.registered + ' server commands; ' + r.global +
-				' global commands skipped (registerGlobal is off).'
-			: 'Registered ' + r.registered + ' server commands and ' + r.global + ' global commands.';
+			? 'Registered ' + count(r.registered, 'server command') + '; ' +
+				count(r.global, 'global command') + ' skipped (registerGlobal is off).'
+			: 'Registered ' + count(r.registered, 'server command') + ' and ' +
+				count(r.global, 'global command') + '.';
 	}
 	const skipped = Array.isArray(r.skipped) ? r.skipped : [];
 	if (skipped.length > 0) {

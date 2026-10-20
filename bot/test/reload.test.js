@@ -8,7 +8,7 @@ describe('reloadReply', () => {
 	});
 	it('lists skipped names when there are any', () => {
 		expect(reloadReply({ registered: 1, skipped: ['Discord Command: a: no published version', 'b'] })).toEqual({
-			content: 'Registered 1 commands.\nSkipped:\n- Discord Command: a: no published version\n- b',
+			content: 'Registered 1 command.\nSkipped:\n- Discord Command: a: no published version\n- b',
 		});
 	});
 	it('shows the sync error when the sync failed', () => {
@@ -27,5 +27,13 @@ describe('reloadReply', () => {
 		expect(reloadReply({ registered: 5, global: 2, globalSkipped: true, skipped: ['b'] })).toEqual({
 			content: 'Registered 5 server commands; 2 global commands skipped (registerGlobal is off).\nSkipped:\n- b',
 		});
+	});
+	it('uses the singular for one command', () => {
+		expect(reloadReply({ registered: 1, global: 1, globalSkipped: false, skipped: [] }).content).toBe(
+			'Registered 1 server command and 1 global command.',
+		);
+		expect(reloadReply({ registered: 0, global: 1, globalSkipped: true, skipped: [] }).content).toBe(
+			'Registered 0 server commands; 1 global command skipped (registerGlobal is off).',
+		);
 	});
 });
