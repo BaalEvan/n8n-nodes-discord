@@ -3,3 +3,4 @@ node_modules
 Agents~/
 release/
 bot/dist/
+.mcp.json
