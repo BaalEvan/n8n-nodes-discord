@@ -170,7 +170,7 @@
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nreturn [{ json: flowInput('zlecenie', $('When called by another workflow').first().json.interaction) }];"
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nreturn [{ json: flowInput('zlecenie', $('When called by another workflow').first().json.interaction, Date.now()) }];"
 			}
 		},
 		{
@@ -694,16 +694,16 @@
 		{
 			"id": "fb706c0d-aee1-5108-8274-e1e2d954fa66",
 			"name": "Reply Success",
-			"type": "n8n-nodes-base.set",
-			"typeVersion": 3.5,
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
 			"position": [
 				4180,
 				-100
 			],
 			"parameters": {
-				"mode": "raw",
-				"jsonOutput": "={{ JSON.stringify({ content: $('Done').first().json.content }) }}",
-				"options": {}
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nconst post = $('Post Notice');\nreturn [{ json: { content: flowReplyText($('Done').first().json, post.isExecuted ? post.first().json : null) } }];"
 			}
 		},
 		{
@@ -804,16 +804,16 @@
 		{
 			"id": "fd661150-b4fe-547f-8544-1abfc02c0c01",
 			"name": "Reply",
-			"type": "n8n-nodes-base.set",
-			"typeVersion": 3.5,
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
 			"position": [
 				4620,
 				300
 			],
 			"parameters": {
-				"mode": "raw",
-				"jsonOutput": "={{ JSON.stringify({ content: $('Stop').first().json.content }) }}",
-				"options": {}
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nconst post = $('Post Note');\nreturn [{ json: { content: flowReplyText($('Stop').first().json, post.isExecuted ? post.first().json : null) } }];"
 			}
 		}
 	],

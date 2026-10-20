@@ -36,6 +36,10 @@ var FLOW_STATUS_MESSAGES = {
 	403: 'Forbidden - perhaps check your credentials?',
 };
 
+var FLOW_UNTOLD =
+	"Something went wrong saving your file, and the board couldn't be told automatically; please let them know.";
+var FLOW_UNSENT = "\nThe board couldn't be notified automatically; please let them know.";
+
 var FLOW_AUTH_TEXT =
 	/authorization grant|invalid_grant|Token has been expired or revoked|invalid_token/i;
 
@@ -63,7 +67,7 @@ function flowChoices(command, interaction, nowMs) {
 	};
 }
 
-function flowInput(command, interaction) {
+function flowInput(command, interaction, nowMs) {
 	var spec = FLOW_COMMANDS[command];
 	var inter = interaction || {};
 	var options = inter.options || {};
@@ -83,7 +87,9 @@ function flowInput(command, interaction) {
 		};
 	}
 	var date = parseDate(options[spec.date]);
-	if (!date.ok) return { ok: false, content: badDate(spec.date) };
+	var thisYear = warsawDate(nowMs === undefined ? Date.now() : nowMs).year;
+	if (!date.ok || Math.abs(date.year - thisYear) > 1)
+		return { ok: false, content: badDate(spec.date) };
 	var hours = spec.hours ? options[spec.hours] : undefined;
 	return {
 		ok: true,
@@ -285,7 +291,16 @@ function flowFileLinks(upload) {
 	};
 }
 
-function flowNotice(plan, links) {
+function flowNotice(plan, links, duplicates) {
+	var flags = (duplicates || [])
+		.map(function (n) {
+			return '\n⚠️ A file named `' + n + '` was already in that folder; both are kept.';
+		})
+		.join('');
+	return flowBaseNotice(plan, links) + flags;
+}
+
+function flowBaseNotice(plan, links) {
 	var row = plan.row || {};
 	var who = text(row.shortname) || text(row.fullname);
 	if (plan.command === 'b2b') {
@@ -339,9 +354,16 @@ function flowSuccess(plan, folder, uploads, existing) {
 			text(folder && folder.path),
 			dups,
 		),
-		notice: flowNotice(plan, links),
+		notice: flowNotice(plan, links, dups),
 		channelId: text(plan.channelId),
 	};
+}
+
+function flowReplyText(result, post) {
+	var r = result || {};
+	var posted = Boolean(post && text(post.id) && post.error === undefined);
+	if (r.action === 'stop') return r.content === replies.FAILED && !posted ? FLOW_UNTOLD : r.content;
+	return posted ? r.content : r.content + FLOW_UNSENT;
 }
 
 if (typeof module !== 'undefined')
@@ -359,4 +381,5 @@ if (typeof module !== 'undefined')
 		flowFailure,
 		flowFileLinks,
 		flowSuccess,
+		flowReplyText,
 	};

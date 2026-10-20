@@ -70,6 +70,11 @@ const UPLOADED = {
 };
 const PDF_BYTES = { data: 'JVBERi0=', mimeType: 'application/pdf', fileName: 'faktura.pdf' };
 const AUTH_LINE = notices.DRIVE_AUTH_HINT;
+const UNTOLD =
+	"Something went wrong saving your file, and the board couldn't be told automatically; please let them know.";
+const UNSENT = "\nThe board couldn't be notified automatically; please let them know.";
+const DUP_LINE = (name) =>
+	'⚠️ A file named `' + name + '` was already in that folder; both are kept.';
 
 const interaction = (options = {}, attachment = {}) => ({
 	kind: 'command',
@@ -116,6 +121,7 @@ function run(wf, opts = {}) {
 		drive = () => ({ json: UPLOADED }),
 		discordError,
 		tableErrors,
+		workflows,
 	} = opts;
 	const calls = { http: [], drive: [] };
 	const r = simulate(
@@ -126,7 +132,7 @@ function run(wf, opts = {}) {
 				Employee: employees.map((x) => ({ ...x })),
 				discord_config: config.map((x) => ({ ...x })),
 			},
-			workflows: { 'helper-wf': helperStub(folder) },
+			workflows: workflows || { 'helper-wf': helperStub(folder) },
 			http: (req) => {
 				calls.http.push(req);
 				return http(req);
@@ -145,6 +151,7 @@ function run(wf, opts = {}) {
 		messages: r.env.messages.map((m) => ({ channelId: m.channelId, content: m.content })),
 		subCalls: r.env.subCalls,
 		stop: r.data.has('Stop') ? r.data.get('Stop')[0][0].json : undefined,
+		tables: r.env.tables,
 		calls,
 	};
 }
@@ -365,7 +372,16 @@ describe('/invoice-b2b', () => {
 		it('keeps the Code nodes thin and inlines the three libs', () => {
 			const code = wf.nodes.filter((n) => n.type === 'n8n-nodes-base.code');
 			expect(code.map((n) => n.name).sort()).toEqual(
-				['Done', 'Failure', 'Plan', 'Stop', 'Suggest Dates', 'Validate'].sort(),
+				[
+					'Done',
+					'Failure',
+					'Plan',
+					'Reply',
+					'Reply Success',
+					'Stop',
+					'Suggest Dates',
+					'Validate',
+				].sort(),
 			);
 			const template = require('../workflows/commands/invoice-b2b.template.json');
 			for (const n of template.nodes.filter((x) => x.type === 'n8n-nodes-base.code')) {
@@ -376,6 +392,21 @@ describe('/invoice-b2b', () => {
 				expect(n.parameters.jsCode.split('\n').length, n.name).toBeLessThanOrEqual(8);
 			}
 			for (const n of code) expect(n.parameters.jsCode, n.name).not.toMatch(/\bthrow\b/);
+		});
+
+		it('replies through the lib, checking whether the board post went out', () => {
+			for (const [reply, from, post] of [
+				['Reply', 'Stop', 'Post Note'],
+				['Reply Success', 'Done', 'Post Notice'],
+			]) {
+				const code = node(wf, reply).parameters.jsCode;
+				expect(code, reply).toContain("const post = $('" + post + "');");
+				expect(code, reply).toContain(
+					"flowReplyText($('" +
+						from +
+						"').first().json, post.isExecuted ? post.first().json : null)",
+				);
+			}
 		});
 	});
 
@@ -526,7 +557,7 @@ describe('/invoice-b2b', () => {
 
 		it('an unreadable discord_config table fails at step config, not as missing keys', () => {
 			const r = run(wf, { tableErrors: { discord_config: 'Could not find data table' } });
-			expect(r.reply).toEqual({ content: replies.FAILED });
+			expect(r.reply).toEqual({ content: UNTOLD });
 			expect(r.stop.note).toBe(
 				failureNote('invoice-b2b', USER, 'config', 'Could not find data table', false),
 			);
@@ -535,9 +566,9 @@ describe('/invoice-b2b', () => {
 			expect(r.calls.http).toEqual([]);
 		});
 
-		it('with no channel configured the user still gets the failure reply', () => {
+		it('with no channel configured the user is told the board was not told', () => {
 			const r = run(wf, { config: CONFIG.filter((c) => c.key !== 'invoiceNotifyChannelId') });
-			expect(r.reply).toEqual({ content: replies.FAILED });
+			expect(r.reply).toEqual({ content: UNTOLD });
 			expect(r.messages).toEqual([]);
 		});
 	});
@@ -610,6 +641,12 @@ describe('/invoice-b2b', () => {
 					FILE +
 					'` was already there; both are kept.',
 			);
+			const lines = r.messages[0].content.split('\n');
+			expect(lines).toHaveLength(4);
+			expect(lines.slice(0, 3).join('\n')).toBe(
+				'Cześć Dziadu, ten zjeb **Jan** wysłał fakture **(160 godzin)** za `sierpień` `2026`\n -> [Pobierz Dziadu](https://drive.google.com/uc?id=FILE1&export=download)\n -> [Zobacz Dziadu](https://drive.google.com/file/d/FILE1/view?usp=drivesdk)',
+			);
+			expect(lines[3]).toBe(DUP_LINE(FILE));
 		});
 
 		it('escapes a quote in the file name inside the Drive query', () => {
@@ -628,9 +665,12 @@ describe('/invoice-b2b', () => {
 			expect(r.messages[0].content).toContain('ten zjeb **Jan Kowalski** wysłał');
 		});
 
-		it('still gives the success reply when the notice cannot be posted', () => {
+		it('says the board was not notified when the notice cannot be posted', () => {
 			const r = run(wf, { discordError: () => 'Missing Access' });
-			expect(r.reply.content).toBe('Uploaded `' + FILE + '` to `' + FOLDER.path + '`.');
+			expect(r.order).toContain('Post Notice');
+			expect(r.messages).toHaveLength(1);
+			expect(r.messages[0].content).toContain('Cześć Dziadu');
+			expect(r.reply.content).toBe('Uploaded `' + FILE + '` to `' + FOLDER.path + '`.' + UNSENT);
 		});
 	});
 
@@ -748,13 +788,108 @@ describe('/invoice-b2b', () => {
 			]);
 		});
 
-		it('the user still gets the failure reply when the note cannot be posted', () => {
+		it('the failure reply says the board was not told when the note cannot be posted', () => {
 			const r = run(wf, {
 				drive: () => ({ error: 'Authorization failed - please check your credentials' }),
 				discordError: () => 'Missing Access',
 			});
-			expect(r.reply).toEqual({ content: replies.FAILED });
+			expect(r.reply).toEqual({ content: UNTOLD });
 			expect(r.messages).toHaveLength(1);
+			expect(r.order).toContain('Post Note');
+		});
+
+		it('a gate reply stays as it is when its note cannot be posted', () => {
+			for (const [employees, content] of [
+				[[], replies.NOT_REGISTERED],
+				[[ROW, { ...ROW, fullname: 'Jan Nowak' }], replies.AMBIGUOUS],
+				[[{ ...ROW, b2bentity: '' }], replies.INCOMPLETE],
+			]) {
+				const r = run(wf, { employees, discordError: () => 'Missing Access' });
+				expect(r.reply).toEqual({ content });
+				expect(r.messages).toHaveLength(1);
+			}
+		});
+	});
+
+	describe('date range', () => {
+		it('refuses a date more than a year away from the current Warsaw year', () => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date(Date.UTC(2026, 9, 20, 10)));
+			for (const d of ['2028-08-31', '2024-08-31', '0001-08-31']) {
+				const r = run(wf, { input: interaction({ sell_date: d }) });
+				expect(r.reply, d).toEqual({ content: '`sell_date` must be a date like 2026-08-31.' });
+				expect(r.order, d).not.toContain('Load Employees');
+			}
+			for (const d of ['2025-08-31', '2027-08-31']) {
+				expect(run(wf, { input: interaction({ sell_date: d }) }).reply.content, d).toContain(
+					'Uploaded `B2B-INVOICE-' + d + '-',
+				);
+			}
+		});
+	});
+
+	describe('with the real Drive folder helper', () => {
+		it('resolves the folders on an empty root and uploads into the person folder', () => {
+			const helper = { ...built['helpers/drive-folder'], id: 'helper-wf' };
+			const folders = new Map();
+			let next = 1;
+			const http = (req) => {
+				if (req.node === 'List Children') {
+					const parent = req.url.split("q='")[1].split("'")[0];
+					const kids = [...folders.values()].filter((f) => f.parents.includes(parent));
+					return { json: { files: kids } };
+				}
+				if (req.node === 'Create Folder') {
+					const id = 'F' + next++;
+					folders.set(id, {
+						id,
+						name: req.body.name,
+						parents: req.body.parents,
+						createdTime: '2026-10-20T00:00:00.000Z',
+					});
+					return { json: { id, name: req.body.name } };
+				}
+				return okHttp(req);
+			};
+			const r = run(wf, { http, workflows: { 'helper-wf': helper } });
+			expect(r.subCalls.map((c) => [c.node, c.workflowId])).toEqual([
+				['Find Folder', 'helper-wf'],
+				['Year', 'helper-wf'],
+				['Month', 'helper-wf'],
+				['Person', 'helper-wf'],
+			]);
+			expect(r.subCalls[0].input).toEqual({
+				rootId: 'ROOT',
+				year: 2026,
+				month: 8,
+				personFolderName: PERSON,
+			});
+			expect([...folders.values()].map((f) => [f.id, f.name, f.parents])).toEqual([
+				['F1', '2026', ['ROOT']],
+				['F2', '08 - Sierpień', ['F1']],
+				['F3', PERSON, ['F2']],
+			]);
+			expect(r.tables.drive_folders).toEqual([
+				{ path: 'ROOT/2026', folderId: 'F1' },
+				{ path: 'ROOT/2026/08', folderId: 'F2' },
+				{ path: 'ROOT/2026/08/' + PERSON.toLowerCase(), folderId: 'F3' },
+			]);
+			const check = r.calls.http.find((h) => h.node === 'Check Duplicate');
+			expect(check.query.q).toBe("'F3' in parents and name='" + FILE + "' and trashed=false");
+			expect(r.calls.drive.map((d) => [d.node, d.name, d.folderId])).toEqual([
+				['Upload', FILE, 'F3'],
+			]);
+			expect(r.reply).toEqual({
+				content: 'Uploaded `' + FILE + '` to `2026/08 - Sierpień/' + PERSON + '`.',
+			});
+			expect(r.messages).toEqual([
+				{
+					channelId: CHANNEL,
+					content:
+						'Cześć Dziadu, ten zjeb **Jan** wysłał fakture **(160 godzin)** za `sierpień` `2026`\n -> [Pobierz Dziadu](https://drive.google.com/uc?id=FILE1&export=download)\n -> [Zobacz Dziadu](https://drive.google.com/file/d/FILE1/view?usp=drivesdk)',
+				},
+			]);
+			expect(r.order.slice(-3)).toEqual(['Done', 'Post Notice', 'Reply Success']);
 		});
 	});
 });
@@ -969,7 +1104,16 @@ describe('/invoice-zlecenie', () => {
 		it('keeps the Code nodes thin and inlines the three libs', () => {
 			const code = wf.nodes.filter((n) => n.type === 'n8n-nodes-base.code');
 			expect(code.map((n) => n.name).sort()).toEqual(
-				['Done', 'Failure', 'Plan', 'Stop', 'Suggest Dates', 'Validate'].sort(),
+				[
+					'Done',
+					'Failure',
+					'Plan',
+					'Reply',
+					'Reply Success',
+					'Stop',
+					'Suggest Dates',
+					'Validate',
+				].sort(),
 			);
 			const template = require('../workflows/commands/invoice-zlecenie.template.json');
 			for (const n of template.nodes.filter((x) => x.type === 'n8n-nodes-base.code')) {
@@ -978,7 +1122,7 @@ describe('/invoice-zlecenie', () => {
 					'//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js',
 				);
 				expect(n.parameters.jsCode.split('\n').length, n.name).toBeLessThanOrEqual(12);
-				if (n.name !== 'Done' && n.name !== 'Failure') {
+				if (!['Done', 'Failure', 'Reply', 'Reply Success'].includes(n.name)) {
 					expect(n.parameters.jsCode, n.name).toContain("('zlecenie'");
 				}
 			}
@@ -1063,7 +1207,7 @@ describe('/invoice-zlecenie', () => {
 
 		it('an unreadable discord_config table fails at step config', () => {
 			const r = runZ({ tableErrors: { discord_config: 'Could not find data table' } });
-			expect(r.reply).toEqual({ content: replies.FAILED });
+			expect(r.reply).toEqual({ content: UNTOLD });
 			expect(r.stop.note).toBe(
 				failureNote('invoice-zlecenie', USER, 'config', 'Could not find data table', false),
 			);
@@ -1130,6 +1274,9 @@ describe('/invoice-zlecenie', () => {
 				'Uploaded `' + TS_FILE + '` to `' + ZFOLDER.path + '`.',
 				'Uploaded `' + BILL_FILE + '` to `' + ZFOLDER.path + '`.',
 				'A file named `' + BILL_FILE + '` was already there; both are kept.',
+			]);
+			expect(r.messages).toEqual([
+				{ channelId: CHANNEL, content: NOTICE + '\n' + DUP_LINE(BILL_FILE) },
 			]);
 		});
 
@@ -1244,6 +1391,63 @@ describe('/invoice-zlecenie', () => {
 			const r = runZ({ folder: null });
 			failed(r, 'folder: call', 'no folder id returned', false);
 			expect(r.order[r.order.length - 1]).toBe('Reply');
+		});
+
+		it('the failure reply says the board was not told when the note cannot be posted', () => {
+			const r = runZ({
+				drive: (req) => (req.node === 'Upload Bill' ? { error: 'Backend Error' } : zDrive(req)),
+				discordError: () => 'Missing Access',
+			});
+			expect(r.reply).toEqual({ content: UNTOLD });
+			expect(r.messages).toHaveLength(1);
+			expect(r.messages[0].content).toContain('at step `bill: upload`');
+		});
+
+		it('with no channel configured the user is told the board was not told', () => {
+			const r = runZ({ config: CONFIG.filter((c) => c.key !== 'invoiceNotifyChannelId') });
+			expect(r.reply).toEqual({ content: UNTOLD });
+			expect(r.messages).toEqual([]);
+		});
+
+		it('a gate reply stays as it is when its note cannot be posted', () => {
+			const r = runZ({ employees: [], discordError: () => 'Missing Access' });
+			expect(r.reply).toEqual({ content: replies.NOT_REGISTERED });
+			expect(r.messages).toHaveLength(1);
+		});
+	});
+
+	describe('board notice', () => {
+		it('says the board was not notified when the notice cannot be posted', () => {
+			const r = runZ({ discordError: () => 'Missing Access' });
+			expect(r.order).toContain('Post Notice');
+			expect(r.messages).toEqual([{ channelId: CHANNEL, content: NOTICE }]);
+			expect(r.reply.content).toBe(
+				'Uploaded `' +
+					TS_FILE +
+					'` to `' +
+					ZFOLDER.path +
+					'`.\nUploaded `' +
+					BILL_FILE +
+					'` to `' +
+					ZFOLDER.path +
+					'`.' +
+					UNSENT,
+			);
+		});
+	});
+
+	describe('date range', () => {
+		it('refuses a month_date more than a year away from the current Warsaw year', () => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date(Date.UTC(2026, 9, 20, 10)));
+			for (const d of ['2028-08-31', '2024-08-31', '0001-08-31']) {
+				const r = runZ({ input: zInteraction({ month_date: d }) });
+				expect(r.reply, d).toEqual({ content: '`month_date` must be a date like 2026-08-31.' });
+				expect(r.order, d).not.toContain('Load Employees');
+			}
+			expect(runZ({ input: zInteraction({ month_date: '2027-01-31' }) }).reply.content).toContain(
+				'ZLECENIE-2027-01-31-Anna-Nowak-TIMESHEET.pdf',
+			);
 		});
 	});
 });
@@ -1368,7 +1572,7 @@ describe('/invoice-client', () => {
 				);
 				expect(n.parameters.jsCode.split('\n').length, n.name).toBeLessThanOrEqual(8);
 				expect(n.parameters.jsCode, n.name).not.toContain("'b2b'");
-				if (n.name !== 'Done' && n.name !== 'Failure') {
+				if (!['Done', 'Failure', 'Reply', 'Reply Success'].includes(n.name)) {
 					expect(n.parameters.jsCode, n.name).toContain("('client'");
 				}
 			}
@@ -1533,7 +1737,7 @@ describe('/invoice-client', () => {
 
 		it('an unreadable discord_config table fails at step config', () => {
 			const r = runC({ tableErrors: { discord_config: 'Could not find data table' } });
-			expect(r.reply).toEqual({ content: replies.FAILED });
+			expect(r.reply).toEqual({ content: UNTOLD });
 			expect(r.stop.note).toBe(
 				failureNote('invoice-client', USER, 'config', 'Could not find data table', false),
 			);
@@ -1544,6 +1748,56 @@ describe('/invoice-client', () => {
 			const r = runC({ tableErrors: { Employee: 'Could not find data table' } });
 			failed(r, 'employee', 'Could not find data table', false);
 			expect(r.subCalls).toEqual([]);
+		});
+
+		it('the failure reply says the board was not told when the note cannot be posted', () => {
+			const r = runC({
+				drive: () => ({ error: 'Backend Error' }),
+				discordError: () => 'Missing Access',
+			});
+			expect(r.reply).toEqual({ content: UNTOLD });
+			expect(r.messages).toHaveLength(1);
+		});
+
+		it('with no channel configured the user is told the board was not told', () => {
+			const r = runC({ config: CONFIG.filter((c) => c.key !== 'invoiceNotifyChannelId') });
+			expect(r.reply).toEqual({ content: UNTOLD });
+			expect(r.messages).toEqual([]);
+		});
+	});
+
+	describe('board notice', () => {
+		it('says the board was not notified when the notice cannot be posted', () => {
+			const r = runC({ discordError: () => 'Missing Access' });
+			expect(r.order).toContain('Post Notice');
+			expect(r.messages).toEqual([{ channelId: CHANNEL, content: notice('Janek') }]);
+			expect(r.reply.content).toBe(
+				'Uploaded `' + CFILE + '` to `2026/08 - Sierpień/Klienci`.' + UNSENT,
+			);
+		});
+
+		it('flags a same-named client file in the notice', () => {
+			const r = runC({
+				http: (req) =>
+					req.node === 'Check Duplicate' ? { json: { files: [{ id: 'OLD' }] } } : okHttp(req),
+			});
+			expect(r.messages).toEqual([
+				{ channelId: CHANNEL, content: notice('Janek') + '\n' + DUP_LINE(CFILE) },
+			]);
+		});
+	});
+
+	describe('date range', () => {
+		it('refuses an invoice_date more than a year away from the current Warsaw year', () => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date(Date.UTC(2026, 9, 20, 10)));
+			for (const d of ['2028-08-14', '2024-08-14', '0001-08-14']) {
+				const r = runC({ input: cInteraction({ invoice_date: d }) });
+				expect(r.reply, d).toEqual({ content: '`invoice_date` must be a date like 2026-08-31.' });
+			}
+			expect(runC({ input: cInteraction({ invoice_date: '2025-12-01' }) }).reply.content).toBe(
+				'Uploaded `' + CFILE + '` to `2026/08 - Sierpień/Klienci`.',
+			);
 		});
 	});
 });

@@ -284,6 +284,25 @@ describe('notices', () => {
 			'⚠️ Invoice upload failed: /invoice-b2b by <@42> at step `upload`: boom\nGoogle Drive login has expired or was revoked — reconnect the `Google Drive account` credential in n8n.',
 		);
 	});
+	it('failure note cuts a long reason to 1500 characters so the note fits in a Discord message', () => {
+		const long = 'x'.repeat(5000);
+		for (const auth of [false, true]) {
+			const note = inv.failureNote(
+				'invoice-zlecenie',
+				'111111111111111111',
+				'bill: upload',
+				long,
+				auth,
+			);
+			expect(note.length).toBeLessThan(2000);
+			const reason = note.split('\n')[0].split('`bill: upload`: ')[1];
+			expect(reason).toBe('x'.repeat(1500) + '…');
+		}
+		const edge = 'y'.repeat(1500);
+		expect(inv.failureNote('invoice-b2b', '42', 'upload', edge, false)).toBe(
+			'⚠️ Invoice upload failed: /invoice-b2b by <@42> at step `upload`: ' + edge,
+		);
+	});
 	it('registration notes', () => {
 		expect(inv.notRegisteredNote('invoice-zlecenie', '42')).toBe(
 			'⚠️ <@42> tried /invoice-zlecenie but no Employee row has their Discord ID.',

@@ -197,7 +197,11 @@ function successReply(files, path, duplicates) {
 	return lines.join('\n');
 }
 
+var MAX_REASON_CHARS = 1500;
+
 function failureNote(command, userId, step, reason, auth) {
+	var why = String(reason);
+	if (why.length > MAX_REASON_CHARS) why = why.slice(0, MAX_REASON_CHARS) + '…';
 	var note =
 		'⚠️ Invoice upload failed: /' +
 		command +
@@ -206,7 +210,7 @@ function failureNote(command, userId, step, reason, auth) {
 		'> at step `' +
 		step +
 		'`: ' +
-		reason;
+		why;
 	return auth ? note + '\n' + DRIVE_AUTH_HINT : note;
 }
 

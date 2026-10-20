@@ -15,6 +15,7 @@ const {
 	flowFailure,
 	flowFileLinks,
 	flowSuccess,
+	flowReplyText,
 } = loadModule('invoiceFlow', ['invoice', 'driveFolder']);
 const {
 	replies,
@@ -197,6 +198,33 @@ describe('flowInput', () => {
 			content: '`bill` must be a PDF.',
 		});
 		expect(Object.keys(zlecenie({}).attachments)).toEqual(['timesheet', 'bill']);
+	});
+	it('accepts only a year within one of the current Warsaw year', () => {
+		const NOW = Date.UTC(2026, 9, 20, 10);
+		const at = (d, now = NOW) => flowInput('b2b', b2bInteraction({ sell_date: d }), now);
+		for (const d of ['2025-01-01', '2026-10-20', '2027-12-31']) {
+			expect(at(d).ok, d).toBe(true);
+			expect(at(d).date.iso, d).toBe(d);
+		}
+		for (const d of ['2028-01-01', '2024-12-31', '0001-01-01']) {
+			expect(at(d), d).toEqual({
+				ok: false,
+				content: '`sell_date` must be a date like 2026-08-31.',
+			});
+		}
+		const newYearsEve = Date.UTC(2026, 11, 31, 23, 30);
+		expect(at('2028-01-01', newYearsEve).ok).toBe(true);
+		expect(at('2025-12-31', newYearsEve).ok).toBe(false);
+		const z = flowInput(
+			'zlecenie',
+			{
+				userId: USER,
+				options: { timesheet: '1', bill: '2', month_date: '2029-08-31' },
+				resolved: { attachments: { 1: PDF, 2: PDF } },
+			},
+			NOW,
+		);
+		expect(z).toEqual({ ok: false, content: '`month_date` must be a date like 2026-08-31.' });
 	});
 	it('keeps the client description and the display name', () => {
 		const input = flowInput('client', {
@@ -610,6 +638,31 @@ describe('flowSuccess', () => {
 			'A file named `B2B-INVOICE-2026-08-31-Jan-Kowalski-Firma-IT.pdf` was already there; both are kept.',
 		]);
 	});
+	it('flags a same-named b2b file in the notice too', () => {
+		const plan = flowPlan('b2b', b2bInput(), [ROW], CONFIG);
+		const plain = flowSuccess(plan, FOLDER, [UPLOAD], [{ files: [] }]).notice;
+		const r = flowSuccess(plan, FOLDER, [UPLOAD], [{ files: [{ id: 'OLD' }] }]);
+		expect(r.notice).toBe(
+			plain +
+				'\n⚠️ A file named `B2B-INVOICE-2026-08-31-Jan-Kowalski-Firma-IT.pdf` was already in that folder; both are kept.',
+		);
+		expect(flowSuccess(plan, FOLDER, [UPLOAD], []).notice).toBe(plain);
+	});
+	it('flags only the zlecenie file that was already there in the notice', () => {
+		const z = flowInput('zlecenie', {
+			userId: USER,
+			options: { timesheet: '1', bill: '2', month_date: '2026-08-31' },
+			resolved: { attachments: { 1: PDF, 2: PDF } },
+		});
+		const plan = flowPlan('zlecenie', z, [{ ...ROW, contract: 'ZLECENIE' }], CONFIG);
+		const uploads = [{ id: 'T' }, { id: 'B' }];
+		const plain = flowSuccess(plan, FOLDER, uploads, [{ files: [] }, { files: [] }]).notice;
+		const r = flowSuccess(plan, FOLDER, uploads, [{ files: [] }, { files: [{ id: 'OLD' }] }]);
+		expect(r.notice.split('\n')).toEqual([
+			...plain.split('\n'),
+			'⚠️ A file named `ZLECENIE-2026-08-31-Jan-Kowalski-Bill.pdf` was already in that folder; both are kept.',
+		]);
+	});
 	it('falls back to the full name when shortname is empty', () => {
 		const plan = flowPlan('b2b', b2bInput(), [{ ...ROW, shortname: '' }], CONFIG);
 		expect(flowSuccess(plan, FOLDER, [UPLOAD], []).notice).toContain('**Jan Kowalski**');
@@ -663,5 +716,41 @@ describe('flowSuccess', () => {
 		const plan = flowPlan('client', { ...client, displayName: '' }, [], CONFIG);
 		expect(flowSuccess(plan, FOLDER, [UPLOAD], []).notice).toBe(expected('<@' + USER + '>'));
 		expect(notice([])).toContain(' (wrzucił: Janek)\n`FV-1.pdf` za `sierpień` `2026`');
+	});
+});
+
+describe('flowReplyText', () => {
+	const UNTOLD =
+		"Something went wrong saving your file, and the board couldn't be told automatically; please let them know.";
+	const POSTED = { id: '1290000000000000000', channel_id: CHANNEL };
+	const failure = { action: 'stop', content: replies.FAILED, note: 'n', channelId: CHANNEL };
+	it('keeps the failure reply only when the note was posted', () => {
+		expect(flowReplyText(failure, POSTED)).toBe(replies.FAILED);
+		expect(flowReplyText(failure, null)).toBe(UNTOLD);
+		expect(flowReplyText(failure, { error: 'Missing Access' })).toBe(UNTOLD);
+		expect(flowReplyText(failure, { error: { message: 'Missing Access' }, id: 'x' })).toBe(UNTOLD);
+		expect(flowReplyText(failure, {})).toBe(UNTOLD);
+	});
+	it('keeps the gate replies whether or not their note was posted', () => {
+		for (const content of [replies.NOT_REGISTERED, replies.AMBIGUOUS, replies.INCOMPLETE]) {
+			const stop = { action: 'stop', content, note: 'n', channelId: CHANNEL };
+			expect(flowReplyText(stop, POSTED)).toBe(content);
+			expect(flowReplyText(stop, null)).toBe(content);
+			expect(flowReplyText(stop, { error: 'Missing Access' })).toBe(content);
+		}
+	});
+	it('adds a line to the success reply when the notice was not posted', () => {
+		const done = {
+			content: 'Uploaded `a.pdf` to `2026/08 - Sierpień/X`.',
+			notice: 'n',
+			channelId: CHANNEL,
+		};
+		expect(flowReplyText(done, POSTED)).toBe(done.content);
+		expect(flowReplyText(done, { error: 'Missing Access' })).toBe(
+			done.content + "\nThe board couldn't be notified automatically; please let them know.",
+		);
+		expect(flowReplyText(done, null)).toBe(
+			done.content + "\nThe board couldn't be notified automatically; please let them know.",
+		);
 	});
 });
