@@ -1,4 +1,4 @@
-// Runs a built workflow for one input item in n8n's v1 order, with stand-ins for HTTP, Data Tables and sub-workflows.
+// Runs a built workflow for one input item in n8n's v1 order, with stand-ins for HTTP, Drive, Discord, Data Tables and sub-workflows.
 function expr(code, ctx) {
 	return new Function('$', '$json', '$workflow', 'return (' + code + ');')(
 		ctx.$,
@@ -26,11 +26,24 @@ function matches(conditions, ctx) {
 	});
 }
 
-function rowMatches(row, filters, ctx) {
-	return (filters.conditions || []).every((c) => {
+function rowMatches(row, filters, ctx, any) {
+	const conditions = (filters && filters.conditions) || [];
+	if (!conditions.length) return true;
+	const test = (c) => {
 		if (c.condition !== 'eq') throw new Error('simulate: no condition ' + c.condition);
 		return row[c.keyName] === resolve(c.keyValue, ctx);
-	});
+	};
+	return any ? conditions.some(test) : conditions.every(test);
+}
+
+function failed(node, error, outputs) {
+	if (node.onError === 'continueErrorOutput') {
+		const out = Array.from({ length: outputs }, () => []);
+		out.push([{ json: { error } }]);
+		return out;
+	}
+	if (node.onError === 'continueRegularOutput') return [[{ json: { error } }]];
+	throw new Error('simulate: ' + node.name + ' failed');
 }
 
 function runWorkflow(wf, input, env, depth = 0) {
@@ -54,6 +67,7 @@ function runWorkflow(wf, input, env, depth = 0) {
 		const p = node.parameters;
 		switch (node.type) {
 			case 'n8n-nodes-base.executeWorkflowTrigger': {
+				if (p.inputSource === 'passthrough') return [[{ json: items[0].json }]];
 				const json = {};
 				for (const f of p.workflowInputs.values) {
 					json[f.name] = items[0].json[f.name] === undefined ? null : items[0].json[f.name];
@@ -82,12 +96,23 @@ function runWorkflow(wf, input, env, depth = 0) {
 				const fn = new Function('$', '$input', '$json', p.jsCode);
 				return [fn(accessor, $input, ctx.$json)];
 			}
+			case 'n8n-nodes-base.set': {
+				if (p.mode !== 'raw') throw new Error('simulate: Set mode ' + p.mode);
+				const out = resolve(p.jsonOutput, ctx);
+				return [[{ json: typeof out === 'string' ? JSON.parse(out) : out }]];
+			}
 			case 'n8n-nodes-base.dataTable': {
 				const name = p.dataTableId.value;
+				if (env.tableErrors && env.tableErrors[name]) {
+					return failed(node, env.tableErrors[name], 1);
+				}
 				const rows = (tables[name] = tables[name] || []);
+				const any = p.matchType === 'anyCondition';
 				let out;
 				if (p.operation === 'get') {
-					out = rows.filter((r) => rowMatches(r, p.filters, ctx)).slice(0, p.limit || 50);
+					out = rows
+						.filter((r) => rowMatches(r, p.filters, ctx, any))
+						.slice(0, p.returnAll ? Infinity : p.limit || 50);
 				} else if (p.operation === 'deleteRows') {
 					out = rows.filter((r) => rowMatches(r, p.filters, ctx));
 					tables[name] = rows.filter((r) => !out.includes(r));
@@ -106,16 +131,52 @@ function runWorkflow(wf, input, env, depth = 0) {
 			}
 			case 'n8n-nodes-base.httpRequest': {
 				const body = p.sendBody ? resolve(p.jsonBody, ctx) : undefined;
+				const query = {};
+				if (p.sendQuery) {
+					for (const q of p.queryParameters.parameters) query[q.name] = resolve(q.value, ctx);
+				}
 				const res = env.http({
 					node: node.name,
 					method: p.method,
 					url: resolve(p.url, ctx),
+					query: p.sendQuery ? query : undefined,
 					body: typeof body === 'string' ? JSON.parse(body) : body,
 				});
-				if (!res.error) return [[{ json: res.json }]];
-				if (node.onError === 'continueErrorOutput') return [[], [{ json: { error: res.error } }]];
-				if (node.onError === 'continueRegularOutput') return [[{ json: { error: res.error } }]];
-				throw new Error('simulate: ' + node.name + ' failed');
+				if (res.error) return failed(node, res.error, 1);
+				const format = p.options && p.options.response && p.options.response.response;
+				if (format && format.responseFormat === 'file') {
+					return [[{ json: {}, binary: { [format.outputPropertyName || 'data']: res.binary } }]];
+				}
+				return [[{ json: res.json }]];
+			}
+			case 'n8n-nodes-base.googleDrive': {
+				const field = resolve(p.inputDataFieldName, ctx);
+				const binary = items[0].binary && items[0].binary[field];
+				if (!binary) throw new Error('simulate: ' + node.name + ' has no binary ' + field);
+				const res = env.drive({
+					node: node.name,
+					resource: p.resource || 'file',
+					operation: p.operation || 'upload',
+					name: resolve(p.name, ctx),
+					folderId: resolve(p.folderId.value, ctx),
+					driveId: p.driveId.value,
+					binary,
+				});
+				if (res.error) return failed(node, res.error, 1);
+				return [[{ json: res.json }]];
+			}
+			case 'CUSTOM.discord': {
+				const call = {
+					node: node.name,
+					resource: p.resource,
+					operation: p.operation,
+					channelId: resolve(p.channelId, ctx),
+					content: resolve(p.content, ctx),
+				};
+				env.messages.push(call);
+				const error = env.discordError && env.discordError(call);
+				if (error) return failed(node, error, 1);
+				return [[{ json: { id: 'message-' + env.messages.length } }]];
 			}
 			case 'n8n-nodes-base.executeWorkflow': {
 				const id = resolve(p.workflowId.value, ctx);
@@ -165,6 +226,10 @@ function simulate(wf, input, env = {}) {
 		http: () => {
 			throw new Error('simulate: no http stand-in');
 		},
+		drive: () => {
+			throw new Error('simulate: no drive stand-in');
+		},
+		messages: [],
 		subCalls: [],
 		executions: [],
 		...env,

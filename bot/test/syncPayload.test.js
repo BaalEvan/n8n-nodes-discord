@@ -161,3 +161,15 @@ describe('buildCommandList guilds', () => {
 		expect(JSON.parse(r.table[1].definition).guilds).toEqual([G]);
 	});
 });
+
+describe('buildCommandList option limits', () => {
+	it('passes min_value and max_length through to the registered options', () => {
+		const options = [
+			{ type: 10, name: 'hours', description: 'H', required: true, min_value: 0.25 },
+			{ type: 3, name: 'description', description: 'D', max_length: 1000 },
+		];
+		const r = buildCommandList([wf('1', 'x', { name: 'x', description: 'X', options })]);
+		expect(r.errors).toEqual([]);
+		expect(r.guildCommands[0].options).toEqual(options);
+	});
+});
