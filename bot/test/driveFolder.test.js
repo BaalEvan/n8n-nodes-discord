@@ -174,6 +174,19 @@ describe('cacheAction', () => {
 		expect(cacheAction({ error: { status: 404 } })).toBe('drop');
 		expect(cacheAction({ httpCode: 404 })).toBe('drop');
 	});
+	it('drops a folder that was moved out of the expected parent', () => {
+		expect(cacheAction({ id: 'f1', trashed: false, parents: ['elsewhere'] }, 'p1')).toBe('drop');
+		expect(cacheAction({ id: 'f1', trashed: false, parents: [] }, 'p1')).toBe('drop');
+	});
+	it('uses a folder still under the expected parent, or one whose parents are unknown', () => {
+		expect(cacheAction({ id: 'f1', trashed: false, parents: ['p1'] }, 'p1')).toBe('use');
+		expect(cacheAction({ id: 'f1', trashed: false, parents: ['p0', 'p1'] }, 'p1')).toBe('use');
+		expect(cacheAction({ id: 'f1', trashed: false }, 'p1')).toBe('use');
+	});
+	it('never drops a moved folder on an auth or server error', () => {
+		expect(cacheAction({ error: { httpCode: '401' }, parents: ['elsewhere'] }, 'p1')).toBe('error');
+		expect(cacheAction({ error: { httpCode: '503' } }, 'p1')).toBe('error');
+	});
 	it('never drops on an auth, server or unknown error', () => {
 		expect(cacheAction({ error: { httpCode: '401', message: 'Unauthorized' } })).toBe('error');
 		expect(cacheAction({ error: { httpCode: '403' } })).toBe('error');

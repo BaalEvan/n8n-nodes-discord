@@ -1333,7 +1333,7 @@ describe('Drive folder helper', () => {
 		expect(calls).toEqual({
 			'Check Cached': [
 				'GET',
-				"=https://www.googleapis.com/drive/v3/files/{{ $('Find Cached').first().json.folderId }}?fields=id,trashed&supportsAllDrives=true",
+				"=https://www.googleapis.com/drive/v3/files/{{ $('Find Cached').first().json.folderId }}?fields=id,trashed,parents&supportsAllDrives=true",
 			],
 			'List Children': ['GET', LIST_URL],
 			'Rename Folder': [
@@ -1385,6 +1385,9 @@ describe('Drive folder helper', () => {
 		expect(targets(wf, 'Cache Switch', 1)).toEqual(['Drop Cached']);
 		expect(targets(wf, 'Cache Switch', 2)).toEqual(['Level Error']);
 		expect(targets(wf, 'Drop Cached')).toEqual(['List Children']);
+		expect(node(wf, 'Cache Action').parameters.jsCode).toContain(
+			"cacheAction(check, $('When called by another workflow').first().json.parentId)",
+		);
 		expect(targets(wf, 'List Children', 0)).toEqual(['Pick Folder']);
 		expect(targets(wf, 'Pick Switch', 0)).toEqual(['Folder Result']);
 		expect(targets(wf, 'Pick Switch', 1)).toEqual(['Rename Folder']);
@@ -1500,7 +1503,11 @@ describe('Drive folder helper', () => {
 					'$',
 			);
 			const checkRe = new RegExp(
-				'^' + esc(DRIVE + '/') + '([^?/]+)' + esc('?fields=id,trashed&supportsAllDrives=true') + '$',
+				'^' +
+					esc(DRIVE + '/') +
+					'([^?/]+)' +
+					esc('?fields=id,trashed,parents&supportsAllDrives=true') +
+					'$',
 			);
 			const renameRe = new RegExp(
 				'^' + esc(DRIVE + '/') + '([^?/]+)' + esc('?supportsAllDrives=true') + '$',
@@ -1522,7 +1529,9 @@ describe('Drive folder helper', () => {
 				}
 				if (req.method === 'GET' && (m = checkRe.exec(req.url))) {
 					const x = files.get(m[1]);
-					return x ? { json: { id: x.id, trashed: x.trashed } } : { error: notFound };
+					return x
+						? { json: { id: x.id, trashed: x.trashed, parents: x.parents } }
+						: { error: notFound };
 				}
 				if (req.method === 'PATCH' && (m = renameRe.exec(req.url))) {
 					const x = files.get(m[1]);
@@ -1678,6 +1687,51 @@ describe('Drive folder helper', () => {
 				expect(drive.files.get('new4')).toMatchObject({ name: '08 - Sierpień', parents: ['new1'] });
 			});
 		}
+
+		it('drops a cached person folder that was moved elsewhere and creates it under the month', () => {
+			const drive = fakeDrive();
+			const tables = {};
+			run(drive, tables);
+			drive.files.get('new3').parents = ['ARCHIVE'];
+			const before = drive.calls.length;
+			const out = run(drive, tables);
+			expect(out).toEqual([{ folderId: 'new4', path: PATH, created: [PATH], renamed: [] }]);
+			expect(drive.calls.slice(before).map((c) => c.node)).toEqual([
+				'Check Cached',
+				'Check Cached',
+				'Check Cached',
+				'List Children',
+				'Create Folder',
+			]);
+			expect(drive.files.get('new4')).toMatchObject({
+				name: 'B2B - Jan Kowalski - Firma',
+				parents: ['new2'],
+			});
+			expect(drive.files.get('new3').parents).toEqual(['ARCHIVE']);
+			const personPath = 'ROOT/2026/08/b2b - jan kowalski - firma';
+			expect(tables.drive_folders.filter((r) => r.path === personPath)).toEqual([
+				{ path: personPath, folderId: 'new4' },
+			]);
+		});
+
+		it('drops a cached person folder that was moved elsewhere and reuses the one under the month', () => {
+			const drive = fakeDrive();
+			const tables = {};
+			run(drive, tables);
+			drive.files.get('new3').parents = ['ARCHIVE'];
+			drive.files.set('p2', {
+				id: 'p2',
+				name: 'B2B - Jan Kowalski - Firma',
+				parents: ['new2'],
+				createdTime: '2026-10-21T00:00:00.000Z',
+				trashed: false,
+			});
+			const out = run(drive, tables);
+			expect(out).toEqual([{ folderId: 'p2', path: PATH, created: [], renamed: [] }]);
+			expect(drive.count('Create Folder')).toBe(3);
+			expect(cacheRow(tables, 'ROOT/2026/08/b2b - jan kowalski - firma').folderId).toBe('p2');
+			expect(cacheRow(tables, 'ROOT/2026/08').folderId).toBe('new2');
+		});
 
 		it('keeps the cache row and reports an auth error when the cache check gets 401', () => {
 			const drive = fakeDrive();

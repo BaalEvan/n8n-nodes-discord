@@ -95,13 +95,15 @@ function driveError(item) {
 	};
 }
 
-function cacheAction(check) {
+function cacheAction(check, parentId) {
 	var c = check || {};
 	var failed =
 		(c.error !== undefined && c.error !== null) || c.httpCode || c.status || c.statusCode;
 	if (failed)
 		return driveError(c.error !== undefined ? c : { error: c }).httpCode === 404 ? 'drop' : 'error';
 	if (c.trashed === true) return 'drop';
+	if (Array.isArray(c.parents) && text(parentId) && c.parents.indexOf(text(parentId)) === -1)
+		return 'drop';
 	return text(c.id) ? 'use' : 'error';
 }
 

@@ -561,7 +561,7 @@
 			],
 			"parameters": {
 				"method": "GET",
-				"url": "=https://www.googleapis.com/drive/v3/files/{{ $('Find Cached').first().json.folderId }}?fields=id,trashed&supportsAllDrives=true",
+				"url": "=https://www.googleapis.com/drive/v3/files/{{ $('Find Cached').first().json.folderId }}?fields=id,trashed,parents&supportsAllDrives=true",
 				"authentication": "predefinedCredentialType",
 				"nodeCredentialType": "googleDriveOAuth2Api",
 				"options": {}
@@ -585,7 +585,7 @@
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js\nconst check = $input.first().json;\nreturn [{ json: { action: cacheAction(check), id: $('Find Cached').first().json.folderId, check: check } }];"
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js\nconst check = $input.first().json;\nreturn [{ json: { action: cacheAction(check, $('When called by another workflow').first().json.parentId), id: $('Find Cached').first().json.folderId, check: check } }];"
 			}
 		},
 		{
