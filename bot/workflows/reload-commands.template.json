@@ -25,7 +25,7 @@
 			],
 			"parameters": {
 				"mode": "raw",
-				"jsonOutput": "{\n  \"name\": \"reload-commands\",\n  \"description\": \"Re-register all bot commands\",\n  \"ephemeral\": true\n}",
+				"jsonOutput": "{\n  \"name\": \"reload-commands\",\n  \"description\": \"Re-register all bot commands\",\n  \"scope\": \"global\",\n  \"ephemeral\": true\n}",
 				"options": {}
 			}
 		},

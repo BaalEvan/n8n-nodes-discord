@@ -307,6 +307,9 @@ describe('command workflows', () => {
 		expect(parsed.definition).toEqual({
 			name: 'reload-commands',
 			description: 'Re-register all bot commands',
+			scope: 'global',
+			contexts: [0, 1, 2],
+			integration_types: [0, 1],
 			ephemeral: true,
 		});
 		const run = node(wf, 'Run Sync');
