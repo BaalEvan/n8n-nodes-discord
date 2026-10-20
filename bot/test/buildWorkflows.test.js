@@ -322,9 +322,15 @@ describe('command workflows', () => {
 
 	it('reload-commands Reply builds the message from the sync report', () => {
 		const out = runCode(built['reload-commands'], 'Reply', {
-			input: [{ json: { registered: 3, skipped: [], guilds: ['g'] } }],
+			input: [{ json: { registered: 3, global: 2, globalSkipped: false, skipped: [], guilds: ['g'] } }],
 		});
-		expect(out).toEqual([{ json: { content: 'Registered 3 commands.' } }]);
+		expect(out).toEqual([{ json: { content: 'Registered 3 server commands and 2 global commands.' } }]);
+		const off = runCode(built['reload-commands'], 'Reply', {
+			input: [{ json: { registered: 3, global: 2, globalSkipped: true, skipped: [], guilds: ['g'] } }],
+		});
+		expect(off[0].json.content).toBe(
+			'Registered 3 server commands; 2 global commands skipped (registerGlobal is off).',
+		);
 	});
 });
 
@@ -353,7 +359,10 @@ describe('parse command', () => {
 			description: 'Parse Log',
 			options: [{ type: 11, name: 'logfile', description: 'Unity Player.Log', required: true }],
 			ephemeral: false,
-			whitelist: { users: [], roles: [] },
+			scope: 'global',
+			contexts: [0, 1, 2],
+			integration_types: [0, 1],
+			whitelist: { everyone: true, users: [], roles: [] },
 		});
 	});
 
@@ -823,6 +832,9 @@ describe('sync', () => {
 			'Get Application',
 			'Guilds',
 			'Register',
+			'Global',
+			'Global Enabled',
+			'Register Global',
 			'Replace Table',
 			'Has Rows',
 			'Table Rows',
@@ -836,6 +848,44 @@ describe('sync', () => {
 		expect(targets(wf, 'Has Rows', 0)).toEqual(['Table Rows']);
 		expect(targets(wf, 'Has Rows', 1)).toEqual(['Report']);
 		expect(targets(wf, 'Insert Rows')).toEqual(['Report']);
+		expect(targets(wf, 'Register')).toEqual(['Global']);
+		expect(targets(wf, 'Global')).toEqual(['Global Enabled']);
+		expect(targets(wf, 'Global Enabled', 0)).toEqual(['Register Global']);
+		expect(targets(wf, 'Global Enabled', 1)).toEqual(['Replace Table']);
+		expect(targets(wf, 'Register Global')).toEqual(['Replace Table']);
+	});
+
+	it('Load Config reads guildIds and registerGlobal, and the application is read once', () => {
+		const p = node(wf, 'Load Config').parameters;
+		expect(p.matchType).toBe('anyCondition');
+		expect(p.returnAll).toBe(true);
+		expect(p.limit).toBeUndefined();
+		expect(p.filters.conditions.map((c) => [c.keyName, c.condition, c.keyValue])).toEqual([
+			['key', 'eq', 'guildIds'],
+			['key', 'eq', 'registerGlobal'],
+		]);
+		expect(node(wf, 'Get Application').executeOnce).toBe(true);
+	});
+
+	it('overwrites the global list only behind Global Enabled', () => {
+		const n = node(wf, 'Register Global');
+		expect(n.parameters).toEqual({
+			authentication: 'bot',
+			resource: 'applicationCommand',
+			operation: 'bulkOverwriteGlobal',
+			applicationId: '={{ $json.applicationId }}',
+			payload: '={{ JSON.stringify($json.commands) }}',
+		});
+		expect(n.credentials).toEqual({ discordGatewayBotApi: { name: 'Discord Bot (live)' } });
+		const cond = node(wf, 'Global Enabled').parameters.conditions;
+		expect(cond.conditions).toHaveLength(1);
+		expect(cond.conditions[0].leftValue).toBe('={{ $json.registerGlobal }}');
+		expect(cond.conditions[0].operator).toMatchObject({ type: 'boolean', operation: 'true' });
+		const globalOps = wf.nodes.filter(
+			(x) => x.parameters.resource === 'applicationCommand' && /Global/.test(x.parameters.operation),
+		);
+		expect(globalOps.map((x) => x.name)).toEqual(['Register Global']);
+		expect(node(wf, 'Global').parameters.mode).toBe('runOnceForAllItems');
 	});
 
 	it('reads tagged workflows through the n8n API credential', () => {
@@ -858,11 +908,18 @@ describe('sync', () => {
 		expect(node(wf, 'Replace Table').alwaysOutputData).toBe(true);
 	});
 
-	it('Build, Guilds and Report work on API-shaped data', () => {
+	it('Build, Guilds, Global and Report work on API-shaped data', () => {
 		const def = {
 			name: 'Command Definition',
 			parameters: { jsonOutput: '{"name":"ping","description":"P"}' },
 		};
+		const globalText = JSON.stringify({
+			name: 'preview',
+			description: 'V',
+			scope: 'global',
+			whitelist: { everyone: true, users: [], roles: [] },
+		});
+		const globalDef = { name: 'Command Definition', parameters: { jsonOutput: globalText } };
 		const builtOut = runCode(wf, 'Build', {
 			input: [
 				{
@@ -874,20 +931,42 @@ describe('sync', () => {
 					},
 				},
 				{ json: { id: 'w2', name: 'Discord Command: draft', active: true, nodes: [def] } },
+				{
+					json: {
+						id: 'w3',
+						name: 'Discord Command: preview',
+						active: true,
+						activeVersion: { nodes: [globalDef] },
+					},
+				},
 			],
 		});
+		const previewCommand = {
+			name: 'preview',
+			description: 'V',
+			contexts: [0, 1, 2],
+			integration_types: [0, 1],
+		};
 		expect(builtOut[0].json).toMatchObject({
-			commands: [{ name: 'ping', description: 'P' }],
+			guildCommands: [{ name: 'ping', description: 'P' }],
+			globalCommands: [previewCommand],
 			errors: [],
 			skipped: ['Discord Command: draft: no published version'],
 		});
 		expect(builtOut[0].json.table).toEqual([
 			{ name: 'ping', workflowId: 'w1', definition: '{"name":"ping","description":"P"}' },
+			{ name: 'preview', workflowId: 'w3', definition: globalText },
 		]);
+		const config = (registerGlobal) => [
+			{ json: { key: 'guildIds', value: '["g1","g2"]' } },
+			...(registerGlobal === undefined
+				? []
+				: [{ json: { key: 'registerGlobal', value: registerGlobal } }]),
+		];
 		const guilds = runCode(wf, 'Guilds', {
 			nodes: {
 				Build: builtOut,
-				'Load Config': [{ json: { key: 'guildIds', value: '["g1","g2"]' } }],
+				'Load Config': config('true'),
 				'Get Application': [{ json: { id: 'app1' } }],
 			},
 			input: [{ json: { id: 'app1' } }],
@@ -896,21 +975,39 @@ describe('sync', () => {
 			{ guildId: 'g1', applicationId: 'app1', commands: [{ name: 'ping', description: 'P' }] },
 			{ guildId: 'g2', applicationId: 'app1', commands: [{ name: 'ping', description: 'P' }] },
 		]);
+		const globalOut = (registerGlobal) =>
+			runCode(wf, 'Global', {
+				nodes: {
+					Build: builtOut,
+					'Load Config': config(registerGlobal),
+					'Get Application': [{ json: { id: 'app1' } }],
+				},
+				input: [{ json: {} }, { json: {} }],
+			});
+		expect(globalOut('true')).toEqual([
+			{ json: { registerGlobal: true, applicationId: 'app1', commands: [previewCommand] } },
+		]);
+		expect(globalOut('false')[0].json.registerGlobal).toBe(false);
+		expect(globalOut(undefined)[0].json.registerGlobal).toBe(false);
 		const rows = runCode(wf, 'Table Rows', { nodes: { Build: builtOut }, input: [{ json: {} }] });
-		expect(rows).toEqual([{ json: builtOut[0].json.table[0] }]);
-		const report = runCode(wf, 'Report', {
-			nodes: { Build: builtOut, Guilds: guilds },
-			input: [{ json: {} }],
-		});
-		expect(report).toEqual([
+		expect(rows.map((r) => r.json)).toEqual(builtOut[0].json.table);
+		const report = (registerGlobal) =>
+			runCode(wf, 'Report', {
+				nodes: { Build: builtOut, Guilds: guilds, Global: globalOut(registerGlobal) },
+				input: [{ json: {} }],
+			});
+		expect(report('true')).toEqual([
 			{
 				json: {
 					registered: 1,
+					global: 1,
+					globalSkipped: false,
 					skipped: ['Discord Command: draft: no published version'],
 					guilds: ['g1', 'g2'],
 				},
 			},
 		]);
+		expect(report(undefined)[0].json).toMatchObject({ registered: 1, global: 1, globalSkipped: true });
 	});
 
 	it('Build reports invalid definitions in the abort message', () => {
@@ -947,7 +1044,7 @@ describe('sync', () => {
 		expect(() =>
 			runCode(wf, 'Guilds', {
 				nodes: {
-					Build: [{ json: { commands: [] } }],
+					Build: [{ json: { guildCommands: [], globalCommands: [] } }],
 					'Load Config': [{ json: {} }],
 					'Get Application': [{ json: { id: 'a' } }],
 				},
@@ -984,7 +1081,10 @@ describe('preview command', () => {
 				},
 			],
 			ephemeral: false,
-			whitelist: { users: [], roles: [] },
+			scope: 'global',
+			contexts: [0, 1, 2],
+			integration_types: [0, 1],
+			whitelist: { everyone: true, users: [], roles: [] },
 		});
 	});
 

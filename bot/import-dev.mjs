@@ -45,6 +45,7 @@ export const DEV_DEFAULTS = {
 	guildIds: ['181510887037861898'],
 	botUserId: '1523209189319774249',
 	webhookBase: 'https://black-n8n.potoroo-scylla.ts.net',
+	registerGlobal: 'true',
 };
 
 export const COMMAND_TAG = 'discord-command';
@@ -264,6 +265,8 @@ export async function importDev({
 	for (const [key, value] of Object.entries(wanted)) await upsertConfig(api, cfgTable, key, value);
 	if (!current.webhookBase)
 		await upsertConfig(api, cfgTable, 'webhookBase', DEV_DEFAULTS.webhookBase);
+	if (current.registerGlobal === undefined)
+		await upsertConfig(api, cfgTable, 'registerGlobal', DEV_DEFAULTS.registerGlobal);
 	const ownerId = (await readConfig(api, cfgTable)).ownerId;
 
 	const credentials = await api.all('/credentials');

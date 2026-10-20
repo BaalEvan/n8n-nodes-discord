@@ -43,6 +43,8 @@ function classifyInteraction(raw) {
 		roleIds: (raw.member && raw.member.roles) || [],
 		guildId: raw.guild_id || null,
 		channelId: raw.channel_id || null,
+		context: raw.context === undefined ? null : raw.context,
+		authorizingIntegrationOwners: raw.authorizing_integration_owners || {},
 		options: {},
 		subcommand: null,
 		resolved: data.resolved || {},

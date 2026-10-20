@@ -18,4 +18,14 @@ describe('reloadReply', () => {
 		expect(reloadReply({})).toEqual({ content: 'Sync returned no report. Check the Discord Sync execution log.' });
 		expect(reloadReply(undefined).content).toMatch(/^Sync returned no report/);
 	});
+	it('reports server and global counts', () => {
+		expect(reloadReply({ registered: 5, global: 2, globalSkipped: false, skipped: [] })).toEqual({
+			content: 'Registered 5 server commands and 2 global commands.',
+		});
+	});
+	it('says when global commands were skipped', () => {
+		expect(reloadReply({ registered: 5, global: 2, globalSkipped: true, skipped: ['b'] })).toEqual({
+			content: 'Registered 5 server commands; 2 global commands skipped (registerGlobal is off).\nSkipped:\n- b',
+		});
+	});
 });

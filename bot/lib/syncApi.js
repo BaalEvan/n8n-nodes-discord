@@ -33,12 +33,35 @@ function parseGuildIds(value) {
 	return ids.map(String);
 }
 
-function syncReport(built, guildIds) {
-	return { registered: built.commands.length, skipped: built.skipped, guilds: guildIds };
+function configValues(items) {
+	const config = {};
+	(items || []).forEach(function (item) {
+		const row = (item && item.json) || {};
+		if (row.key) config[row.key] = row.value;
+	});
+	return config;
+}
+
+function globalPlan(built, config, applicationId) {
+	return {
+		registerGlobal: (config || {}).registerGlobal === 'true',
+		applicationId: applicationId,
+		commands: (built && built.globalCommands) || [],
+	};
+}
+
+function syncReport(built, guildIds, registerGlobal) {
+	return {
+		registered: built.guildCommands.length,
+		global: (built.globalCommands || []).length,
+		globalSkipped: registerGlobal !== true,
+		skipped: built.skipped,
+		guilds: guildIds,
+	};
 }
 
 function syncAbortMessage(errors) {
 	return 'Sync aborted:\n' + errors.join('\n');
 }
 
-if (typeof module !== 'undefined') module.exports = { toSyncWorkflows, parseGuildIds, syncReport, syncAbortMessage };
+if (typeof module !== 'undefined') module.exports = { toSyncWorkflows, parseGuildIds, configValues, globalPlan, syncReport, syncAbortMessage };

@@ -66,3 +66,48 @@ describe('parseDefinition', () => {
 		expect(good.ok).toBe(true);
 	});
 });
+
+describe('parseDefinition scope', () => {
+	const parse = (o) => parseDefinition(JSON.stringify({ name: 'x', description: 'x', ...o }));
+	it('leaves a guild command without contexts or integration_types', () => {
+		expect(parse({}).definition).toEqual({ name: 'x', description: 'x' });
+		expect(parse({ scope: 'guild' }).ok).toBe(true);
+	});
+	it('defaults contexts and integration_types for a global command', () => {
+		const r = parse({ scope: 'global' });
+		expect(r.ok).toBe(true);
+		expect(r.definition.contexts).toEqual([0, 1, 2]);
+		expect(r.definition.integration_types).toEqual([0, 1]);
+	});
+	it('keeps contexts and integration_types given on a global command', () => {
+		const r = parse({ scope: 'global', contexts: [0], integration_types: [1] });
+		expect(r.definition.contexts).toEqual([0]);
+		expect(r.definition.integration_types).toEqual([1]);
+	});
+	it('rejects an unknown scope', () => {
+		const r = parse({ scope: 'everywhere' });
+		expect(r.ok).toBe(false);
+		expect(r.errors).toContain('scope: must be "guild" or "global"');
+	});
+	it('rejects bad contexts and integration_types', () => {
+		expect(parse({ scope: 'global', contexts: [3] }).errors).toContain(
+			'contexts: must be a non-empty array of distinct values from 0, 1, 2',
+		);
+		expect(parse({ scope: 'global', contexts: [] }).ok).toBe(false);
+		expect(parse({ scope: 'global', contexts: [0, 0] }).ok).toBe(false);
+		expect(parse({ scope: 'global', contexts: '0' }).ok).toBe(false);
+		expect(parse({ scope: 'global', integration_types: [2] }).errors).toContain(
+			'integration_types: must be a non-empty array of distinct values from 0, 1',
+		);
+	});
+	it('rejects contexts and integration_types on a guild command', () => {
+		expect(parse({ contexts: [0] }).errors).toContain('contexts: only for "scope": "global"');
+		expect(parse({ scope: 'guild', integration_types: [0] }).errors).toContain(
+			'integration_types: only for "scope": "global"',
+		);
+	});
+	it('validates whitelist.everyone as a boolean', () => {
+		expect(parse({ whitelist: { everyone: true } }).ok).toBe(true);
+		expect(parse({ whitelist: { everyone: 'yes' } }).errors).toContain('whitelist.everyone: must be a boolean');
+	});
+});

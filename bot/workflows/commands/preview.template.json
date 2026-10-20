@@ -25,7 +25,7 @@
 			],
 			"parameters": {
 				"mode": "raw",
-				"jsonOutput": "{\n  \"name\": \"preview\",\n  \"description\": \"Replaces url with variant supporting discord embeds\",\n  \"options\": [\n    {\n      \"type\": 3,\n      \"name\": \"url\",\n      \"description\": \"The URL to convert for Discord embed support\",\n      \"required\": true\n    }\n  ],\n  \"ephemeral\": false,\n  \"whitelist\": {\n    \"users\": [],\n    \"roles\": []\n  }\n}",
+				"jsonOutput": "{\n  \"name\": \"preview\",\n  \"description\": \"Replaces url with variant supporting discord embeds\",\n  \"options\": [\n    {\n      \"type\": 3,\n      \"name\": \"url\",\n      \"description\": \"The URL to convert for Discord embed support\",\n      \"required\": true\n    }\n  ],\n  \"ephemeral\": false,\n  \"scope\": \"global\",\n  \"whitelist\": {\n    \"everyone\": true,\n    \"users\": [],\n    \"roles\": []\n  }\n}",
 				"options": {}
 			}
 		},

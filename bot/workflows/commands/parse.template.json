@@ -25,7 +25,7 @@
 			],
 			"parameters": {
 				"mode": "raw",
-				"jsonOutput": "{\n  \"name\": \"parse\",\n  \"description\": \"Parse Log\",\n  \"options\": [\n    {\n      \"type\": 11,\n      \"name\": \"logfile\",\n      \"description\": \"Unity Player.Log\",\n      \"required\": true\n    }\n  ],\n  \"ephemeral\": false,\n  \"whitelist\": {\n    \"users\": [],\n    \"roles\": []\n  }\n}",
+				"jsonOutput": "{\n  \"name\": \"parse\",\n  \"description\": \"Parse Log\",\n  \"options\": [\n    {\n      \"type\": 11,\n      \"name\": \"logfile\",\n      \"description\": \"Unity Player.Log\",\n      \"required\": true\n    }\n  ],\n  \"ephemeral\": false,\n  \"scope\": \"global\",\n  \"whitelist\": {\n    \"everyone\": true,\n    \"users\": [],\n    \"roles\": []\n  }\n}",
 				"options": {}
 			}
 		},

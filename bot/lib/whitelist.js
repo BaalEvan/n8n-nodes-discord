@@ -1,6 +1,7 @@
 function isAllowed(definition, caller, ownerId) {
 	if (ownerId && caller.userId === ownerId) return true;
 	const whitelist = (definition && definition.whitelist) || {};
+	if (whitelist.everyone === true) return true;
 	const users = whitelist.users || [];
 	const roles = whitelist.roles || [];
 	if (caller.userId && users.indexOf(caller.userId) !== -1) return true;

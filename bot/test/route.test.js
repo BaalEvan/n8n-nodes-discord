@@ -103,4 +103,20 @@ describe('decideRoute', () => {
 	it('unknown kind gives unknownCommand', () => {
 		expect(decideRoute(cls({ kind: 'unknown' }), row, OWNER).route).toBe('unknownCommand');
 	});
+	it('a DM caller runs a command open to everyone and is refused otherwise', () => {
+		const dm = cls({ userId: 'u9', roleIds: [], guildId: null, context: 1 });
+		const open = {
+			workflowId: 'wf2',
+			definition: JSON.stringify({
+				name: 'mail',
+				description: 'Mail',
+				scope: 'global',
+				whitelist: { everyone: true, users: [], roles: [] },
+			}),
+		};
+		expect(decideRoute(dm, open, OWNER)).toMatchObject({ route: 'deferCommand', workflowId: 'wf2' });
+		const closed = { workflowId: 'wf2', definition: JSON.stringify({ name: 'mail', description: 'Mail', scope: 'global' }) };
+		expect(decideRoute(dm, closed, OWNER)).toMatchObject({ route: 'refuse', ephemeral: true });
+		expect(decideRoute({ ...dm, kind: 'autocomplete' }, closed, OWNER).route).toBe('refuseAutocomplete');
+	});
 });

@@ -45,6 +45,40 @@ function checkIdList(list, path, errors) {
 	}
 }
 
+const SCOPES = ['guild', 'global'];
+const GLOBAL_DEFAULTS = { contexts: [0, 1, 2], integration_types: [0, 1] };
+
+function checkEnumList(list, allowed, path, errors) {
+	const ok =
+		Array.isArray(list) &&
+		list.length > 0 &&
+		list.every(function (v, i) {
+			return allowed.indexOf(v) !== -1 && list.indexOf(v) === i;
+		});
+	if (!ok) errors.push(path + ': must be a non-empty array of distinct values from ' + allowed.join(', '));
+}
+
+function checkScope(def, errors) {
+	if (def.scope !== undefined && SCOPES.indexOf(def.scope) === -1) {
+		errors.push('scope: must be "guild" or "global"');
+		return;
+	}
+	const global = def.scope === 'global';
+	Object.keys(GLOBAL_DEFAULTS).forEach(function (key) {
+		if (def[key] === undefined) return;
+		if (!global) errors.push(key + ': only for "scope": "global"');
+		else checkEnumList(def[key], GLOBAL_DEFAULTS[key], key, errors);
+	});
+}
+
+function applyScopeDefaults(def) {
+	if (def.scope !== 'global') return def;
+	Object.keys(GLOBAL_DEFAULTS).forEach(function (key) {
+		if (def[key] === undefined) def[key] = GLOBAL_DEFAULTS[key].slice();
+	});
+	return def;
+}
+
 function checkModals(modals, errors) {
 	if (!modals || typeof modals !== 'object' || Array.isArray(modals)) {
 		errors.push('modals: must be an object');
@@ -104,11 +138,15 @@ function parseDefinition(jsonText) {
 		} else {
 			checkIdList(def.whitelist.users, 'whitelist.users', errors);
 			checkIdList(def.whitelist.roles, 'whitelist.roles', errors);
+			if (def.whitelist.everyone !== undefined && typeof def.whitelist.everyone !== 'boolean') {
+				errors.push('whitelist.everyone: must be a boolean');
+			}
 		}
 	}
 	if (def.ephemeral !== undefined && typeof def.ephemeral !== 'boolean') errors.push('ephemeral: must be a boolean');
 	if (def.modals !== undefined) checkModals(def.modals, errors);
-	return errors.length ? { ok: false, errors: errors } : { ok: true, definition: def };
+	checkScope(def, errors);
+	return errors.length ? { ok: false, errors: errors } : { ok: true, definition: applyScopeDefaults(def) };
 }
 
 if (typeof module !== 'undefined') module.exports = { parseDefinition };

@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 const { loadModule } = require('./load.js');
-const { toSyncWorkflows, parseGuildIds, syncReport, syncAbortMessage } = loadModule('syncApi');
+const { toSyncWorkflows, parseGuildIds, syncReport, syncAbortMessage, configValues, globalPlan } =
+	loadModule('syncApi');
 
 const defNode = { name: 'Command Definition', parameters: { jsonOutput: '{"name":"a","description":"A"}' } };
 
@@ -50,9 +51,48 @@ describe('parseGuildIds', () => {
 });
 
 describe('syncReport', () => {
-	it('counts commands and lists skipped and guilds', () => {
-		const built = { commands: [{ name: 'a' }, { name: 'b' }], skipped: ['x: no published version'] };
-		expect(syncReport(built, ['g1'])).toEqual({ registered: 2, skipped: ['x: no published version'], guilds: ['g1'] });
+	const built = {
+		guildCommands: [{ name: 'a' }, { name: 'b' }],
+		globalCommands: [{ name: 'p' }],
+		skipped: ['x: no published version'],
+	};
+	it('counts server and global commands and lists skipped and guilds', () => {
+		expect(syncReport(built, ['g1'], true)).toEqual({
+			registered: 2,
+			global: 1,
+			globalSkipped: false,
+			skipped: ['x: no published version'],
+			guilds: ['g1'],
+		});
+	});
+	it('marks global as skipped when registerGlobal is off', () => {
+		expect(syncReport(built, ['g1'], false)).toMatchObject({ registered: 2, global: 1, globalSkipped: true });
+	});
+});
+
+describe('configValues', () => {
+	it('maps key/value rows and ignores empty items', () => {
+		expect(
+			configValues([{ json: { key: 'guildIds', value: '["g"]' } }, { json: {} }, { json: { key: 'registerGlobal', value: 'true' } }]),
+		).toEqual({ guildIds: '["g"]', registerGlobal: 'true' });
+		expect(configValues(undefined)).toEqual({});
+	});
+});
+
+describe('globalPlan', () => {
+	const built = { globalCommands: [{ name: 'p', contexts: [0, 1, 2], integration_types: [0, 1] }] };
+	it('registers only when registerGlobal is exactly "true"', () => {
+		expect(globalPlan(built, { registerGlobal: 'true' }, 'app1')).toEqual({
+			registerGlobal: true,
+			applicationId: 'app1',
+			commands: built.globalCommands,
+		});
+		for (const value of [undefined, '', 'false', 'TRUE', ' true', true, '1']) {
+			expect(globalPlan(built, { registerGlobal: value }, 'app1').registerGlobal, String(value)).toBe(false);
+		}
+	});
+	it('defaults to an empty list', () => {
+		expect(globalPlan({}, { registerGlobal: 'true' }, 'a').commands).toEqual([]);
 	});
 });
 

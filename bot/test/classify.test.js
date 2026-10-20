@@ -135,4 +135,51 @@ describe('classifyInteraction', () => {
 		expect(classifyInteraction({ type: 1 }).kind).toBe('unknown');
 		expect(classifyInteraction(undefined).kind).toBe('unknown');
 	});
+	it('a DM command has the user, no roles, no guild, and its context', () => {
+		const c = classifyInteraction({
+			id: 'i',
+			token: 't',
+			application_id: 'a',
+			type: 2,
+			channel_id: 'dm1',
+			context: 1,
+			authorizing_integration_owners: { 0: 'g0', 1: 'u9' },
+			user: { id: 'u9' },
+			data: { name: 'preview', options: [{ name: 'url', type: 3, value: 'https://x' }] },
+		});
+		expect(c).toMatchObject({
+			kind: 'command',
+			commandName: 'preview',
+			userId: 'u9',
+			roleIds: [],
+			guildId: null,
+			channelId: 'dm1',
+			context: 1,
+			authorizingIntegrationOwners: { 0: 'g0', 1: 'u9' },
+			options: { url: 'https://x' },
+		});
+	});
+	it('a user-installed command in a server without the bot keeps that guild id', () => {
+		const c = classifyInteraction({
+			...base,
+			guild_id: 'foreign',
+			type: 2,
+			context: 0,
+			authorizing_integration_owners: { 1: 'u9' },
+			member: { user: { id: 'u9' } },
+			data: { name: 'parse' },
+		});
+		expect(c).toMatchObject({
+			userId: 'u9',
+			roleIds: [],
+			guildId: 'foreign',
+			context: 0,
+			authorizingIntegrationOwners: { 1: 'u9' },
+		});
+	});
+	it('context and authorizingIntegrationOwners default when absent', () => {
+		const c = classifyInteraction({ ...base, type: 2, user: { id: 'u' }, data: { name: 'x' } });
+		expect(c.context).toBeNull();
+		expect(c.authorizingIntegrationOwners).toEqual({});
+	});
 });

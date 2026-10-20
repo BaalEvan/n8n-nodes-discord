@@ -8,6 +8,12 @@ function reloadReply(report) {
 		return { content: 'Sync returned no report. Check the Discord Sync execution log.' };
 	}
 	let content = 'Registered ' + r.registered + ' commands.';
+	if (typeof r.global === 'number') {
+		content = r.globalSkipped
+			? 'Registered ' + r.registered + ' server commands; ' + r.global +
+				' global commands skipped (registerGlobal is off).'
+			: 'Registered ' + r.registered + ' server commands and ' + r.global + ' global commands.';
+	}
 	const skipped = Array.isArray(r.skipped) ? r.skipped : [];
 	if (skipped.length > 0) {
 		content +=

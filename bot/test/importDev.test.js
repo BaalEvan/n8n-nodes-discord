@@ -251,6 +251,36 @@ describe('importDev skip', () => {
 		).toEqual([]);
 	});
 
+	it('adds registerGlobal = "true" only when it is missing', async () => {
+		const calls = stubApi();
+		await run(['router', 'sync']);
+		const up = calls.filter(
+			(c) => c.p.endsWith('/rows/upsert') && c.body.data.key === 'registerGlobal',
+		);
+		expect(up).toHaveLength(1);
+		expect(up[0].body.data.value).toBe('true');
+	});
+
+	it('leaves an existing registerGlobal alone, even "false"', async () => {
+		const calls = stubApi();
+		const base = globalThis.fetch;
+		vi.stubGlobal('fetch', async (url, init = {}) => {
+			if ((init.method || 'GET') === 'GET' && new URL(url).pathname.endsWith('/rows')) {
+				return {
+					ok: true,
+					status: 200,
+					text: async () =>
+						JSON.stringify({ data: [{ key: 'registerGlobal', value: 'false' }] }),
+				};
+			}
+			return base(url, init);
+		});
+		await run(['router', 'sync']);
+		expect(
+			calls.filter((c) => c.p.endsWith('/rows/upsert') && c.body.data.key === 'registerGlobal'),
+		).toEqual([]);
+	});
+
 	it('imports the changelog command before the router', () => {
 		expect(ORDER).toContain('commands/changelog');
 		expect(PUBLISH.has('commands/changelog')).toBe(true);

@@ -27,4 +27,17 @@ describe('isAllowed', () => {
 	it('an undefined owner id does not admit an undefined user', () => {
 		expect(isAllowed({}, caller({ userId: undefined }), undefined)).toBe(false);
 	});
+	it('everyone admits any caller, in a server, a DM or a user install', () => {
+		const open = { whitelist: { everyone: true, users: [], roles: [] } };
+		expect(isAllowed(open, caller(), 'own')).toBe(true);
+		expect(isAllowed(open, { userId: 'u9', roleIds: [], guildId: null }, 'own')).toBe(true);
+		expect(isAllowed(open, { userId: 'u9', roleIds: [], guildId: 'not-our-guild' }, 'own')).toBe(true);
+	});
+	it('a DM caller without everyone passes only as owner or listed user', () => {
+		const dm = { userId: 'u9', roleIds: [], guildId: null };
+		expect(isAllowed({ whitelist: { users: [], roles: [] } }, dm, 'own')).toBe(false);
+		expect(isAllowed({ whitelist: { everyone: false, roles: ['r1'] } }, dm, 'own')).toBe(false);
+		expect(isAllowed({ whitelist: { users: ['u9'] } }, dm, 'own')).toBe(true);
+		expect(isAllowed({}, { ...dm, userId: 'own' }, 'own')).toBe(true);
+	});
 });

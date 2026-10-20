@@ -1,9 +1,13 @@
+const PRIVATE_KEYS = ['whitelist', 'ephemeral', 'modals', 'scope'];
+
 function buildCommandList(workflows) {
-	const commands = [];
+	const guildCommands = [];
+	const globalCommands = [];
 	const table = [];
 	const errors = [];
 	const skipped = [];
 	const owners = {};
+	const scopes = {};
 	(workflows || []).forEach(function (wf) {
 		if (!wf.active) return;
 		let nodes = wf.publishedNodes;
@@ -31,20 +35,42 @@ function buildCommandList(workflows) {
 			return;
 		}
 		const def = parsed.definition;
+		const global = def.scope === 'global';
 		if (owners[def.name] !== undefined) {
-			errors.push('duplicate command name "' + def.name + '": ' + owners[def.name] + ' and ' + wf.name);
+			if (scopes[def.name] !== global) {
+				const guildOwner = global ? owners[def.name] : wf.name;
+				const globalOwner = global ? wf.name : owners[def.name];
+				errors.push(
+					'command name "' + def.name + '" is used by a server command (' + guildOwner +
+						') and a global command (' + globalOwner + ')',
+				);
+			} else {
+				errors.push('duplicate command name "' + def.name + '": ' + owners[def.name] + ' and ' + wf.name);
+			}
 			return;
 		}
 		owners[def.name] = wf.name;
+		scopes[def.name] = global;
 		const command = Object.assign({}, def);
-		delete command.whitelist;
-		delete command.ephemeral;
-		delete command.modals;
-		commands.push(command);
+		PRIVATE_KEYS.forEach(function (key) {
+			delete command[key];
+		});
+		(global ? globalCommands : guildCommands).push(command);
 		table.push({ name: def.name, workflowId: wf.id, definition: text });
 	});
-	if (commands.length > 100) errors.push('too many commands: at most 100 per guild, found ' + commands.length);
-	return { commands: commands, table: table, errors: errors, skipped: skipped };
+	if (guildCommands.length > 100) {
+		errors.push('too many server commands: at most 100 per guild, found ' + guildCommands.length);
+	}
+	if (globalCommands.length > 100) {
+		errors.push('too many global commands: at most 100, found ' + globalCommands.length);
+	}
+	return {
+		guildCommands: guildCommands,
+		globalCommands: globalCommands,
+		table: table,
+		errors: errors,
+		skipped: skipped,
+	};
 }
 
 if (typeof module !== 'undefined') module.exports = { buildCommandList };

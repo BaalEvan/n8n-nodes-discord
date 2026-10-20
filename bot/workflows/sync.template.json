@@ -130,16 +130,22 @@
 					"mode": "name",
 					"value": "discord_config"
 				},
+				"matchType": "anyCondition",
 				"filters": {
 					"conditions": [
 						{
 							"keyName": "key",
 							"condition": "eq",
 							"keyValue": "guildIds"
+						},
+						{
+							"keyName": "key",
+							"condition": "eq",
+							"keyValue": "registerGlobal"
 						}
 					]
 				},
-				"limit": 1
+				"returnAll": true
 			},
 			"alwaysOutputData": true
 		},
@@ -161,7 +167,8 @@
 				"discordGatewayBotApi": {
 					"name": "Discord Bot (live)"
 				}
-			}
+			},
+			"executeOnce": true
 		},
 		{
 			"id": "29cad277-225c-4ff2-a29b-ab235886d5e8",
@@ -175,7 +182,7 @@
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/syncApi.js\nconst built = $('Build').first().json;\nconst guildIds = parseGuildIds(($('Load Config').first().json || {}).value);\nconst applicationId = String(($('Get Application').first().json || {}).id || '');\nif (!applicationId) throw new Error('Get Application returned no application id');\nreturn guildIds.map(function (guildId) {\n\treturn { json: { guildId: guildId, applicationId: applicationId, commands: built.commands } };\n});"
+				"jsCode": "//@inline lib/syncApi.js\nconst built = $('Build').first().json;\nconst config = configValues($('Load Config').all());\nconst guildIds = parseGuildIds(config.guildIds);\nconst applicationId = String(($('Get Application').first().json || {}).id || '');\nif (!applicationId) throw new Error('Get Application returned no application id');\nreturn guildIds.map(function (guildId) {\n\treturn { json: { guildId: guildId, applicationId: applicationId, commands: built.guildCommands } };\n});"
 			}
 		},
 		{
@@ -203,12 +210,83 @@
 			"alwaysOutputData": true
 		},
 		{
+			"id": "193a6212-f1bd-40d9-8e72-29ec0f66e398",
+			"name": "Global",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1760,
+				400
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/syncApi.js\nconst built = $('Build').first().json;\nconst config = configValues($('Load Config').all());\nconst applicationId = String(($('Get Application').first().json || {}).id || '');\nreturn [{ json: globalPlan(built, config, applicationId) }];"
+			}
+		},
+		{
+			"id": "d9c2602d-1064-45ba-a058-d7adb6e4a3e8",
+			"name": "Global Enabled",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1980,
+				400
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "b2f27be6-9a08-41ba-b055-f4ded37b6fbe",
+							"leftValue": "={{ $json.registerGlobal }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "53f24f4b-2b2a-4af3-b5cf-c42a1034e273",
+			"name": "Register Global",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				2200,
+				300
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "applicationCommand",
+				"operation": "bulkOverwriteGlobal",
+				"applicationId": "={{ $json.applicationId }}",
+				"payload": "={{ JSON.stringify($json.commands) }}"
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			}
+		},
+		{
 			"id": "fc68b06f-adb8-4777-a166-0f1b4dd4ba03",
 			"name": "Replace Table",
 			"type": "n8n-nodes-base.dataTable",
 			"typeVersion": 1.1,
 			"position": [
-				1760,
+				2420,
 				400
 			],
 			"parameters": {
@@ -229,7 +307,7 @@
 			"type": "n8n-nodes-base.if",
 			"typeVersion": 2.3,
 			"position": [
-				1980,
+				2640,
 				400
 			],
 			"parameters": {
@@ -262,7 +340,7 @@
 			"type": "n8n-nodes-base.code",
 			"typeVersion": 2,
 			"position": [
-				2200,
+				2860,
 				300
 			],
 			"parameters": {
@@ -277,7 +355,7 @@
 			"type": "n8n-nodes-base.dataTable",
 			"typeVersion": 1.1,
 			"position": [
-				2420,
+				3080,
 				300
 			],
 			"parameters": {
@@ -343,13 +421,13 @@
 			"type": "n8n-nodes-base.code",
 			"typeVersion": 2,
 			"position": [
-				2640,
+				3300,
 				400
 			],
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/syncApi.js\nconst built = $('Build').first().json;\nconst guilds = $('Guilds').all().map(function (i) {\n\treturn i.json.guildId;\n});\nreturn [{ json: syncReport(built, guilds) }];"
+				"jsCode": "//@inline lib/syncApi.js\nconst built = $('Build').first().json;\nconst guilds = $('Guilds').all().map(function (i) {\n\treturn i.json.guildId;\n});\nconst registerGlobal = $('Global').first().json.registerGlobal === true;\nreturn [{ json: syncReport(built, guilds, registerGlobal) }];"
 			}
 		}
 	],
@@ -453,7 +531,7 @@
 			"main": [
 				[
 					{
-						"node": "Replace Table",
+						"node": "Global",
 						"type": "main",
 						"index": 0
 					}
@@ -505,6 +583,46 @@
 				[
 					{
 						"node": "Report",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Global": {
+			"main": [
+				[
+					{
+						"node": "Global Enabled",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Global Enabled": {
+			"main": [
+				[
+					{
+						"node": "Register Global",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Replace Table",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Register Global": {
+			"main": [
+				[
+					{
+						"node": "Replace Table",
 						"type": "main",
 						"index": 0
 					}
