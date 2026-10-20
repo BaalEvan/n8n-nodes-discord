@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildAll } from '../build-workflows.mjs';
 const path = require('path');
 const { loadModule } = require('./load.js');
@@ -155,6 +155,14 @@ function run(wf, opts = {}) {
 		calls,
 	};
 }
+
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(new Date(Date.UTC(2026, 9, 20, 10)));
+});
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 describe('/invoice-b2b', () => {
 	const wf = built['commands/invoice-b2b'];

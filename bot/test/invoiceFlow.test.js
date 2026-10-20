@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 const fs = require('fs');
 const path = require('path');
 const { loadModule } = require('./load.js');
@@ -57,6 +57,14 @@ const b2bInteraction = (options = {}, attachment = {}) => ({
 	resolved: { attachments: { 900: { ...PDF, ...attachment } } },
 });
 const b2bInput = (options, attachment) => flowInput('b2b', b2bInteraction(options, attachment));
+
+beforeEach(() => {
+	vi.useFakeTimers({ toFake: ['Date'] });
+	vi.setSystemTime(new Date(Date.UTC(2026, 9, 20, 10)));
+});
+afterEach(() => {
+	vi.useRealTimers();
+});
 
 describe('inlined together with invoice.js and driveFolder.js', () => {
 	const topNames = (file) => {
