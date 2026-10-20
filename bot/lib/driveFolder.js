@@ -1,16 +1,16 @@
 var MONTH_WORDS = [
-	['styczen', 'sty', 'january', 'jan'],
-	['luty', 'lut', 'february', 'feb'],
-	['marzec', 'mar', 'march'],
-	['kwiecien', 'kwi', 'april', 'apr'],
-	['maj', 'may'],
-	['czerwiec', 'cze', 'june', 'jun'],
-	['lipiec', 'lip', 'july', 'jul'],
-	['sierpien', 'sie', 'august', 'aug'],
-	['wrzesien', 'wrz', 'september', 'sep', 'sept'],
-	['pazdziernik', 'paz', 'october', 'oct'],
-	['listopad', 'lis', 'november', 'nov'],
-	['grudzien', 'gru', 'december', 'dec'],
+	['styczen', 'stycznia', 'sty', 'january', 'jan'],
+	['luty', 'lutego', 'lut', 'february', 'feb'],
+	['marzec', 'marca', 'mar', 'march'],
+	['kwiecien', 'kwietnia', 'kwi', 'april', 'apr'],
+	['maj', 'maja', 'may'],
+	['czerwiec', 'czerwca', 'cze', 'june', 'jun'],
+	['lipiec', 'lipca', 'lip', 'july', 'jul'],
+	['sierpien', 'sierpnia', 'sie', 'august', 'aug'],
+	['wrzesien', 'wrzesnia', 'wrz', 'september', 'sep', 'sept'],
+	['pazdziernik', 'pazdziernika', 'paz', 'october', 'oct'],
+	['listopad', 'listopada', 'lis', 'november', 'nov'],
+	['grudzien', 'grudnia', 'gru', 'december', 'dec'],
 ];
 
 function normalizeName(name) {
@@ -23,7 +23,7 @@ function normalizeName(name) {
 }
 
 function monthOf(name) {
-	var m = /^(?:(\d{1,2})\s*[-.]?\s*)?([a-z]+)$/.exec(normalizeName(name));
+	var m = /^(?:(\d{1,2})\s*[-.\u2013\u2014_]?\s*)?([a-z]+)$/.exec(normalizeName(name));
 	if (!m) return null;
 	for (var i = 0; i < MONTH_WORDS.length; i++) {
 		if (MONTH_WORDS[i].indexOf(m[2]) === -1) continue;
@@ -72,8 +72,8 @@ function pickMonthFolder(children, month) {
 	return variant ? { id: variant.id, rename: canonical } : null;
 }
 
-function cachePath(year, month, person) {
-	var key = text(year);
+function cachePath(rootId, year, month, person) {
+	var key = text(rootId) + '/' + text(year);
 	if (month !== undefined && month !== null && month !== '') key += '/' + pad2(Number(month));
 	if (person !== undefined && person !== null) key += '/' + normalizeName(person);
 	return key;
@@ -164,11 +164,11 @@ function folderPlan(input) {
 	return {
 		rootId: rootId,
 		path: y + '/' + m + '/' + person,
-		year: { name: y, cachePath: cachePath(y), path: y },
-		month: { name: m, cachePath: cachePath(y, month), path: y + '/' + m },
+		year: { name: y, cachePath: cachePath(rootId, y), path: y },
+		month: { name: m, cachePath: cachePath(rootId, y, month), path: y + '/' + m },
 		person: {
 			name: person,
-			cachePath: cachePath(y, month, person),
+			cachePath: cachePath(rootId, y, month, person),
 			path: y + '/' + m + '/' + person,
 		},
 	};

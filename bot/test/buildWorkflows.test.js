@@ -1329,7 +1329,7 @@ describe('Drive folder helper', () => {
 		expect(calls).toEqual({
 			'Check Cached': [
 				'GET',
-				"=https://www.googleapis.com/drive/v3/files/{{ $('Find Cached').first().json.folderId }}?fields=id,trashed",
+				"=https://www.googleapis.com/drive/v3/files/{{ $('Find Cached').first().json.folderId }}?fields=id,trashed&supportsAllDrives=true",
 			],
 			'List Children': ['GET', LIST_URL],
 			'Rename Folder': [
@@ -1496,7 +1496,7 @@ describe('Drive folder helper', () => {
 					'$',
 			);
 			const checkRe = new RegExp(
-				'^' + esc(DRIVE + '/') + '([^?/]+)' + esc('?fields=id,trashed') + '$',
+				'^' + esc(DRIVE + '/') + '([^?/]+)' + esc('?fields=id,trashed&supportsAllDrives=true') + '$',
 			);
 			const renameRe = new RegExp(
 				'^' + esc(DRIVE + '/') + '([^?/]+)' + esc('?supportsAllDrives=true') + '$',
@@ -1567,9 +1567,9 @@ describe('Drive folder helper', () => {
 				parents: ['new2'],
 			});
 			expect(tables.drive_folders).toEqual([
-				{ path: '2026', folderId: 'new1' },
-				{ path: '2026/08', folderId: 'new2' },
-				{ path: '2026/08/b2b - jan kowalski - firma', folderId: 'new3' },
+				{ path: 'ROOT/2026', folderId: 'new1' },
+				{ path: 'ROOT/2026/08', folderId: 'new2' },
+				{ path: 'ROOT/2026/08/b2b - jan kowalski - firma', folderId: 'new3' },
 			]);
 		});
 
@@ -1590,13 +1590,35 @@ describe('Drive folder helper', () => {
 				{ id: 'y', name: '2026', parents: ['ROOT'], createdTime: '2025-01-01' },
 			]);
 			const tables = {};
-			const level = { parentId: 'ROOT', kind: 'year', name: '2026', cachePath: '2026' };
+			const level = { parentId: 'ROOT', kind: 'year', name: '2026', cachePath: 'ROOT/2026' };
 			const first = run(drive, tables, level);
 			const second = run(drive, tables, level);
 			expect(first).toEqual([{ id: 'y', created: false, renamed: null }]);
 			expect(second).toEqual([{ id: 'y', created: false, renamed: null }]);
 			expect(drive.count('List Children')).toBe(1);
 			expect(drive.count('Check Cached')).toBe(1);
+		});
+
+		it('misses the cache for the same year, month and person under another root', () => {
+			const drive = fakeDrive();
+			const tables = {};
+			run(drive, tables);
+			const before = drive.calls.length;
+			const out = run(drive, tables, { ...INPUT, rootId: 'PROD' });
+			expect(out).toEqual([
+				{
+					folderId: 'new6',
+					path: PATH,
+					created: ['2026', '2026/08 - Sierpień', PATH],
+					renamed: [],
+				},
+			]);
+			const second = drive.calls.slice(before).map((c) => c.node);
+			expect(second).not.toContain('Check Cached');
+			expect(second.filter((n) => n === 'List Children')).toHaveLength(3);
+			expect(drive.files.get('new4')).toMatchObject({ name: '2026', parents: ['PROD'] });
+			expect(cacheRow(tables, 'PROD/2026').folderId).toBe('new4');
+			expect(cacheRow(tables, 'ROOT/2026').folderId).toBe('new1');
 		});
 
 		it('reuses existing folders and renames a month variant to the canonical name', () => {
@@ -1647,8 +1669,8 @@ describe('Drive folder helper', () => {
 						renamed: [],
 					},
 				]);
-				expect(cacheRow(tables, '2026/08').folderId).toBe('new4');
-				expect(tables.drive_folders.filter((r) => r.path === '2026/08')).toHaveLength(1);
+				expect(cacheRow(tables, 'ROOT/2026/08').folderId).toBe('new4');
+				expect(tables.drive_folders.filter((r) => r.path === 'ROOT/2026/08')).toHaveLength(1);
 				expect(drive.files.get('new4')).toMatchObject({ name: '08 - Sierpień', parents: ['new1'] });
 			});
 		}
@@ -1665,7 +1687,7 @@ describe('Drive folder helper', () => {
 			expect(out).toEqual([
 				{ error: { step: 'year: cache', message: 'Unauthorized', httpCode: 401, auth: true } },
 			]);
-			expect(cacheRow(tables, '2026').folderId).toBe('new1');
+			expect(cacheRow(tables, 'ROOT/2026').folderId).toBe('new1');
 			expect(tables.drive_folders).toHaveLength(3);
 		});
 

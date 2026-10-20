@@ -48,6 +48,12 @@ describe('monthOf', () => {
 			expect(monthOf(name), name).toBe(8);
 		}
 		expect(monthOf('08-Sierpień')).toBe(8);
+		expect(monthOf('08 – Sierpień')).toBe(8);
+		expect(monthOf('08—Sierpień')).toBe(8);
+		expect(monthOf('08_sierpien')).toBe(8);
+		expect(monthOf('sierpnia')).toBe(8);
+		expect(monthOf('09 - września')).toBe(9);
+		expect(monthOf('wrzesnia')).toBe(9);
 		expect(monthOf('8 sierpien')).toBe(8);
 		expect(monthOf('SIE')).toBe(8);
 		expect(monthOf('01 - Styczeń')).toBe(1);
@@ -57,8 +63,31 @@ describe('monthOf', () => {
 		expect(monthOf('May')).toBe(5);
 		expect(monthOf('12 - Grudzień')).toBe(12);
 	});
+	it('reads every Polish genitive month name, with or without diacritics', () => {
+		const genitive = [
+			'stycznia',
+			'lutego',
+			'marca',
+			'kwietnia',
+			'maja',
+			'czerwca',
+			'lipca',
+			'sierpnia',
+			'września',
+			'października',
+			'listopada',
+			'grudnia',
+		];
+		genitive.forEach((name, i) => {
+			expect(monthOf(name), name).toBe(i + 1);
+			expect(monthOf(normalizeName(name)), name).toBe(i + 1);
+			expect(monthOf(String(i + 1).padStart(2, '0') + ' – ' + name), name).toBe(i + 1);
+		});
+	});
 	it('refuses anything that is not just a month name', () => {
 		expect(monthOf('Sierpniowy raport')).toBeNull();
+		expect(monthOf('08 – września')).toBeNull();
+		expect(monthOf('08 _ - sierpien')).toBeNull();
 		expect(monthOf('sierpień 2026')).toBeNull();
 		expect(monthOf('2026')).toBeNull();
 		expect(monthOf('08')).toBeNull();
@@ -122,13 +151,16 @@ describe('pickMonthFolder', () => {
 });
 
 describe('cachePath', () => {
-	it('builds year, year/month and year/month/normalised person keys', () => {
-		expect(cachePath(2026)).toBe('2026');
-		expect(cachePath('2026', 8)).toBe('2026/08');
-		expect(cachePath(2026, 12)).toBe('2026/12');
-		expect(cachePath(2026, 8, 'B2B - Jan  Kowalski - Firma')).toBe(
-			'2026/08/b2b - jan kowalski - firma',
+	it('builds root/year, root/year/month and root/year/month/normalised person keys', () => {
+		expect(cachePath('ROOT', 2026)).toBe('ROOT/2026');
+		expect(cachePath('ROOT', '2026', 8)).toBe('ROOT/2026/08');
+		expect(cachePath('ROOT', 2026, 12)).toBe('ROOT/2026/12');
+		expect(cachePath('ROOT', 2026, 8, 'B2B - Jan  Kowalski - Firma')).toBe(
+			'ROOT/2026/08/b2b - jan kowalski - firma',
 		);
+	});
+	it('gives a different key for the same folder under another root', () => {
+		expect(cachePath('TEST', 2026, 8, 'Klienci')).not.toBe(cachePath('PROD', 2026, 8, 'Klienci'));
 	});
 });
 
@@ -260,17 +292,17 @@ describe('folderPlan', () => {
 		).toEqual({
 			rootId: 'ROOT',
 			path: '2026/08 - Sierpień/B2B - Jan Kowalski - Firma',
-			year: { name: '2026', cachePath: '2026', path: '2026' },
-			month: { name: '08 - Sierpień', cachePath: '2026/08', path: '2026/08 - Sierpień' },
+			year: { name: '2026', cachePath: 'ROOT/2026', path: '2026' },
+			month: { name: '08 - Sierpień', cachePath: 'ROOT/2026/08', path: '2026/08 - Sierpień' },
 			person: {
 				name: 'B2B - Jan Kowalski - Firma',
-				cachePath: '2026/08/b2b - jan kowalski - firma',
+				cachePath: 'ROOT/2026/08/b2b - jan kowalski - firma',
 				path: '2026/08 - Sierpień/B2B - Jan Kowalski - Firma',
 			},
 		});
 		expect(
 			folderPlan({ rootId: 'R', year: '2026', month: '1', personFolderName: 'Klienci' }).month,
-		).toEqual({ name: '01 - Styczeń', cachePath: '2026/01', path: '2026/01 - Styczeń' });
+		).toEqual({ name: '01 - Styczeń', cachePath: 'R/2026/01', path: '2026/01 - Styczeń' });
 	});
 	it('returns an input error instead of throwing', () => {
 		const ok = { rootId: 'R', year: 2026, month: 8, personFolderName: 'Klienci' };

@@ -561,7 +561,7 @@
 			],
 			"parameters": {
 				"method": "GET",
-				"url": "=https://www.googleapis.com/drive/v3/files/{{ $('Find Cached').first().json.folderId }}?fields=id,trashed",
+				"url": "=https://www.googleapis.com/drive/v3/files/{{ $('Find Cached').first().json.folderId }}?fields=id,trashed&supportsAllDrives=true",
 				"authentication": "predefinedCredentialType",
 				"nodeCredentialType": "googleDriveOAuth2Api",
 				"options": {}
