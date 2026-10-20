@@ -47,7 +47,9 @@ function flowDisplayName(interaction) {
 	var inter = interaction || {};
 	var member = inter.member || {};
 	var user = inter.user || member.user || {};
-	return text(member.nick) || text(user.global_name) || text(user.username);
+	return (
+		text(inter.displayName) || text(member.nick) || text(user.global_name) || text(user.username)
+	);
 }
 
 function flowChoices(command, interaction, nowMs) {
@@ -312,7 +314,7 @@ function flowNotice(plan, links) {
 		description: plan.description,
 		webContentLink: links[0].webContentLink,
 		webViewLink: links[0].webViewLink,
-		uploader: text(row.shortname) || plan.displayName,
+		uploader: who || text(plan.displayName) || '<@' + plan.userId + '>',
 	});
 }
 

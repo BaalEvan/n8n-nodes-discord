@@ -1,0 +1,1006 @@
+{
+	"name": "Discord Command: invoice-client",
+	"nodes": [
+		{
+			"id": "dec74ad4-ba9f-5966-81eb-a09e192a80d9",
+			"name": "When called by another workflow",
+			"type": "n8n-nodes-base.executeWorkflowTrigger",
+			"typeVersion": 1.3,
+			"position": [
+				0,
+				300
+			],
+			"parameters": {
+				"inputSource": "passthrough"
+			}
+		},
+		{
+			"id": "193cfc9a-8db4-5082-8204-95d34baab7f7",
+			"name": "Command Definition",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				220,
+				300
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "{\n  \"name\": \"invoice-client\",\n  \"description\": \"Upload a company invoice for a client\",\n  \"guilds\": [\n    \"1280482154249457685\"\n  ],\n  \"ephemeral\": true,\n  \"whitelist\": {\n    \"users\": [],\n    \"roles\": [\n      \"1280482268015493131\"\n    ]\n  },\n  \"options\": [\n    {\n      \"type\": 11,\n      \"name\": \"invoice\",\n      \"description\": \"Invoice (PDF)\",\n      \"required\": true\n    },\n    {\n      \"type\": 3,\n      \"name\": \"invoice_date\",\n      \"description\": \"Invoice date (YYYY-MM-DD)\",\n      \"required\": true,\n      \"autocomplete\": true\n    },\n    {\n      \"type\": 3,\n      \"name\": \"description\",\n      \"description\": \"What it's for\",\n      \"required\": false,\n      \"max_length\": 1000\n    }\n  ]\n}",
+				"options": {}
+			}
+		},
+		{
+			"id": "421f20ef-8dd6-5a4a-8825-a3744f395284",
+			"name": "Switch on mode",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				440,
+				300
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "ca4a457c-da7c-5b28-8c71-9606493c3d5a",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "command",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "command"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "d1fe0499-424d-5d4f-883e-840d8bc247fa",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "autocomplete",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "autocomplete"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "9ce049ef-d41f-532f-89fb-0c2a399f1667",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "component",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "component"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "e54248a1-5f2d-55ac-8aac-acda84503794",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "modal",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "modal"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "41d7cfca-44bc-5429-8640-20625b53242e",
+			"name": "Suggest Dates",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				660,
+				600
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nreturn [{ json: flowChoices('client', $('When called by another workflow').first().json.interaction, Date.now()) }];"
+			}
+		},
+		{
+			"id": "43fac291-e269-5021-8020-7c1fc2f28d78",
+			"name": "Validate",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				660,
+				200
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nreturn [{ json: flowInput('client', $('When called by another workflow').first().json.interaction) }];"
+			}
+		},
+		{
+			"id": "a9047390-5677-5616-85fe-9f99a3b76b59",
+			"name": "Valid?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				880,
+				200
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "5d3b1916-3ef2-5e35-8abf-94a4f62e20b7",
+							"leftValue": "={{ $json.ok === true }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "549b481d-f822-514d-85f1-4aa6a63ac5fb",
+			"name": "Reply Invalid",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				1100,
+				400
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify({ content: $json.content }) }}",
+				"options": {}
+			}
+		},
+		{
+			"id": "e808d441-4632-58ec-874a-8412e9e0fda8",
+			"name": "Load Employees",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				1100,
+				100
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "Employee"
+				},
+				"returnAll": true
+			},
+			"alwaysOutputData": true,
+			"executeOnce": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "7a7f2a38-4738-58b6-8c5a-a3e059b4b3dc",
+			"name": "Load Config",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				1320,
+				100
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "discord_config"
+				},
+				"matchType": "anyCondition",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "key",
+							"condition": "eq",
+							"keyValue": "invoiceDriveRootId"
+						},
+						{
+							"keyName": "key",
+							"condition": "eq",
+							"keyValue": "invoiceNotifyChannelId"
+						},
+						{
+							"keyName": "key",
+							"condition": "eq",
+							"keyValue": "driveFolderHelperWorkflowId"
+						}
+					]
+				},
+				"returnAll": true
+			},
+			"alwaysOutputData": true,
+			"executeOnce": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "c53e23ae-336f-59b5-899e-815e309430c2",
+			"name": "Plan",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1540,
+				100
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nconst employees = $('Load Employees').all().map((i) => i.json);\nconst config = $('Load Config').all().map((i) => i.json);\nreturn [{ json: flowPlan('client', $('Validate').first().json, employees, config) }];"
+			}
+		},
+		{
+			"id": "a9567119-da5e-510f-82b9-ca3640fa6414",
+			"name": "Go?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1760,
+				100
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "b1c08ac9-e76d-5e23-85cd-47fbc47194ac",
+							"leftValue": "={{ $json.action === 'upload' }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "120d18c1-cec3-5fbc-89f8-80a4e53dd2d6",
+			"name": "Find Folder",
+			"type": "n8n-nodes-base.executeWorkflow",
+			"typeVersion": 1.4,
+			"position": [
+				1980,
+				0
+			],
+			"parameters": {
+				"source": "database",
+				"workflowId": {
+					"__rl": true,
+					"mode": "id",
+					"value": "={{ $('Plan').first().json.helperId }}"
+				},
+				"workflowInputs": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"rootId": "={{ $('Plan').first().json.rootId }}",
+						"year": "={{ $('Plan').first().json.year }}",
+						"month": "={{ $('Plan').first().json.month }}",
+						"personFolderName": "={{ $('Plan').first().json.personFolder }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "rootId",
+							"displayName": "rootId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						},
+						{
+							"id": "year",
+							"displayName": "year",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "number"
+						},
+						{
+							"id": "month",
+							"displayName": "month",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "number"
+						},
+						{
+							"id": "personFolderName",
+							"displayName": "personFolderName",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				},
+				"mode": "once",
+				"options": {
+					"waitForSubWorkflow": true
+				}
+			},
+			"alwaysOutputData": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "7ebe0eb5-cf9b-590c-8cf0-11e8b999c875",
+			"name": "Folder OK?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				2200,
+				0
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "748edb48-1e7b-5488-8973-f7b2ad4ce745",
+							"leftValue": "={{ $json.folderId || '' }}",
+							"rightValue": "",
+							"operator": {
+								"type": "string",
+								"operation": "notEmpty",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "f71c001a-6f53-514e-842e-9b98d432f99e",
+			"name": "Check Duplicate",
+			"type": "n8n-nodes-base.httpRequest",
+			"typeVersion": 4.2,
+			"position": [
+				2420,
+				-100
+			],
+			"parameters": {
+				"method": "GET",
+				"url": "https://www.googleapis.com/drive/v3/files",
+				"authentication": "predefinedCredentialType",
+				"nodeCredentialType": "googleDriveOAuth2Api",
+				"sendQuery": true,
+				"specifyQuery": "keypair",
+				"queryParameters": {
+					"parameters": [
+						{
+							"name": "q",
+							"value": "='{{ $('Find Folder').first().json.folderId }}' in parents and name='{{ $('Plan').first().json.files[0].quotedName }}' and trashed=false"
+						},
+						{
+							"name": "supportsAllDrives",
+							"value": "true"
+						},
+						{
+							"name": "includeItemsFromAllDrives",
+							"value": "true"
+						},
+						{
+							"name": "fields",
+							"value": "files(id)"
+						}
+					]
+				},
+				"options": {}
+			},
+			"credentials": {
+				"googleDriveOAuth2Api": {
+					"name": "Google Drive account"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "653dbb62-5e7e-57e1-8790-588b888b6e60",
+			"name": "Download",
+			"type": "n8n-nodes-base.httpRequest",
+			"typeVersion": 4.2,
+			"position": [
+				2640,
+				-100
+			],
+			"parameters": {
+				"method": "GET",
+				"url": "={{ $('Plan').first().json.files[0].url }}",
+				"authentication": "none",
+				"options": {
+					"response": {
+						"response": {
+							"responseFormat": "file",
+							"outputPropertyName": "invoice"
+						}
+					}
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "bfbaedd5-e404-5002-8731-274c0005d35f",
+			"name": "Upload",
+			"type": "n8n-nodes-base.googleDrive",
+			"typeVersion": 3,
+			"position": [
+				2860,
+				-100
+			],
+			"parameters": {
+				"inputDataFieldName": "invoice",
+				"name": "={{ $('Plan').first().json.files[0].fileName }}",
+				"driveId": {
+					"__rl": true,
+					"mode": "list",
+					"value": "My Drive"
+				},
+				"folderId": {
+					"__rl": true,
+					"value": "={{ $('Find Folder').first().json.folderId }}",
+					"mode": "id"
+				},
+				"options": {}
+			},
+			"credentials": {
+				"googleDriveOAuth2Api": {
+					"name": "Google Drive account"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "8d06c836-0fd4-5d45-8a0b-2f3ca71eca50",
+			"name": "Done",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				3080,
+				-100
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nconst plan = $('Plan').first().json;\nconst folder = $('Find Folder').first().json;\nreturn [{ json: flowSuccess(plan, folder, [$('Upload').first().json], [$('Check Duplicate').first().json]) }];"
+			}
+		},
+		{
+			"id": "58407441-7e57-5e8c-8fef-2381ac308f63",
+			"name": "Post Notice",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				3300,
+				-100
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "message",
+				"operation": "send",
+				"channelId": "={{ $json.channelId }}",
+				"content": "={{ $json.notice }}",
+				"allowedMentions": {
+					"values": {
+						"parse": [],
+						"roles": "",
+						"users": "",
+						"repliedUser": true
+					}
+				}
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "6dc59aa0-01ad-5970-8a3f-554a988dc5ec",
+			"name": "Reply Success",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				3520,
+				-100
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify({ content: $('Done').first().json.content }) }}",
+				"options": {}
+			}
+		},
+		{
+			"id": "4810ede2-50c9-576f-884f-9a62bfa36dba",
+			"name": "Failure",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				3080,
+				200
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nconst step = flowLastStep([\n\t['duplicate check', $('Check Duplicate').isExecuted],\n\t['download', $('Download').isExecuted],\n\t['upload', $('Upload').isExecuted],\n]);\nreturn [{ json: flowFailure($('Plan').first().json, step, $input.first().json) }];"
+			}
+		},
+		{
+			"id": "5e72a60e-5d27-5f6b-899b-08564b07bde7",
+			"name": "Stop",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				3300,
+				300
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "return $input.all();"
+			}
+		},
+		{
+			"id": "15663105-236f-5c09-84f7-17d27f3becbc",
+			"name": "Notify?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				3520,
+				300
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "90277e9b-8f13-5a9e-8699-51c8aec0ad3b",
+							"leftValue": "={{ Boolean($json.note && $json.channelId) }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "3663ec3a-550f-5828-8d16-7398f40fe6c4",
+			"name": "Post Note",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				3740,
+				200
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "message",
+				"operation": "send",
+				"channelId": "={{ $json.channelId }}",
+				"content": "={{ $json.note }}",
+				"allowedMentions": {
+					"values": {
+						"parse": [],
+						"roles": "",
+						"users": "",
+						"repliedUser": true
+					}
+				}
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "51243a4c-442c-554c-80d3-46d5486edae7",
+			"name": "Reply",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				3960,
+				300
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify({ content: $('Stop').first().json.content }) }}",
+				"options": {}
+			}
+		}
+	],
+	"connections": {
+		"When called by another workflow": {
+			"main": [
+				[
+					{
+						"node": "Command Definition",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Command Definition": {
+			"main": [
+				[
+					{
+						"node": "Switch on mode",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Switch on mode": {
+			"main": [
+				[
+					{
+						"node": "Validate",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Suggest Dates",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Validate": {
+			"main": [
+				[
+					{
+						"node": "Valid?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Valid?": {
+			"main": [
+				[
+					{
+						"node": "Load Employees",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply Invalid",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Load Employees": {
+			"main": [
+				[
+					{
+						"node": "Load Config",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Load Config": {
+			"main": [
+				[
+					{
+						"node": "Plan",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Plan": {
+			"main": [
+				[
+					{
+						"node": "Go?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Go?": {
+			"main": [
+				[
+					{
+						"node": "Find Folder",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Stop",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Find Folder": {
+			"main": [
+				[
+					{
+						"node": "Folder OK?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Folder OK?": {
+			"main": [
+				[
+					{
+						"node": "Check Duplicate",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Failure",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Check Duplicate": {
+			"main": [
+				[
+					{
+						"node": "Download",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Failure",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Download": {
+			"main": [
+				[
+					{
+						"node": "Upload",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Failure",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Upload": {
+			"main": [
+				[
+					{
+						"node": "Done",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Failure",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Done": {
+			"main": [
+				[
+					{
+						"node": "Post Notice",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Post Notice": {
+			"main": [
+				[
+					{
+						"node": "Reply Success",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Failure": {
+			"main": [
+				[
+					{
+						"node": "Stop",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Stop": {
+			"main": [
+				[
+					{
+						"node": "Notify?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Notify?": {
+			"main": [
+				[
+					{
+						"node": "Post Note",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Post Note": {
+			"main": [
+				[
+					{
+						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"tags": [
+		{
+			"name": "discord-command"
+		}
+	]
+}

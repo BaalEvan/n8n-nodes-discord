@@ -41,6 +41,7 @@ function classifyInteraction(raw) {
 		payload: null,
 		userId: who.id || '',
 		roleIds: (raw.member && raw.member.roles) || [],
+		displayName: (raw.member && raw.member.nick) || who.global_name || who.username || '',
 		guildId: raw.guild_id || null,
 		channelId: raw.channel_id || null,
 		context: raw.context === undefined ? null : raw.context,

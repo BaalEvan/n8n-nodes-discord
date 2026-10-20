@@ -100,6 +100,10 @@ describe('FLOW_COMMANDS', () => {
 });
 
 describe('flowDisplayName', () => {
+	it('uses the display name the router classified', () => {
+		expect(flowDisplayName({ displayName: ' Janek ', member: { nick: 'Other' } })).toBe('Janek');
+		expect(flowDisplayName({ displayName: '', member: { nick: 'Other' } })).toBe('Other');
+	});
 	it('prefers the server nickname, then the global name, then the username', () => {
 		const user = { id: USER, username: 'jank', global_name: 'Jan K' };
 		expect(flowDisplayName({ member: { nick: 'Janek', user } })).toBe('Janek');
@@ -655,6 +659,9 @@ describe('flowSuccess', () => {
 			});
 		expect(notice([ROW])).toBe(expected('Jan'));
 		expect(notice([])).toBe(expected('Janek'));
+		expect(notice([{ ...ROW, shortname: '' }])).toBe(expected('Jan Kowalski'));
+		const plan = flowPlan('client', { ...client, displayName: '' }, [], CONFIG);
+		expect(flowSuccess(plan, FOLDER, [UPLOAD], []).notice).toBe(expected('<@' + USER + '>'));
 		expect(notice([])).toContain(' (wrzucił: Janek)\n`FV-1.pdf` za `sierpień` `2026`');
 	});
 });

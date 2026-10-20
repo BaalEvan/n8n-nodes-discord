@@ -1247,3 +1247,303 @@ describe('/invoice-zlecenie', () => {
 		});
 	});
 });
+
+describe('/invoice-client', () => {
+	const wf = built['commands/invoice-client'];
+	const { classifyInteraction } = loadModule('classify', ['customId']);
+	const { workflowInput } = loadModule('workflowInput');
+	const CFILE = "FV 12-2026 Acme O'Neil.pdf";
+	const KFOLDER = {
+		folderId: 'KLIENCI',
+		path: '2026/08 - Sierpień/Klienci',
+		created: [],
+		renamed: [],
+	};
+	const CURL = 'https://cdn.discordapp.com/attachments/1/5/fv.pdf?ex=1';
+	const cInteraction = (options = {}, attachment = {}, who = {}) => ({
+		kind: 'command',
+		commandName: 'invoice-client',
+		userId: USER,
+		guildId: '1280482154249457685',
+		displayName: 'Janek',
+		...who,
+		options: { invoice: '903', invoice_date: '2026-08-14', description: 'Hosting', ...options },
+		resolved: { attachments: { 903: { ...PDF, url: CURL, filename: CFILE, ...attachment } } },
+	});
+	const cDrive = () => ({
+		json: { id: 'K1', webViewLink: 'https://view/K1', webContentLink: 'https://get/K1' },
+	});
+	const runC = (opts = {}) =>
+		run(wf, {
+			input: cInteraction(),
+			employees: [],
+			folder: KFOLDER,
+			drive: cDrive,
+			...opts,
+		});
+	const notice = (uploader, description = 'Hosting') =>
+		'Któryś z was dzbany jebane wrzucił nową fakture dla klienta, pamiętajcie zeby ją dać na ksef i wysłać ją klientowi... bo jeszcze nie zapłaci i będzie na was pacany (wrzucił: ' +
+		uploader +
+		')\n`' +
+		CFILE +
+		'` za `sierpień` `2026`\n\n OPIS Faktury: ' +
+		description +
+		'\n -> [Pobierz Fakture](https://get/K1)\n -> [Zobacz Fakture](https://view/K1)';
+	const failed = (r, step, reason, auth) => {
+		expect(r.reply).toEqual({ content: replies.FAILED });
+		expect(r.messages).toEqual([
+			{ channelId: CHANNEL, content: failureNote('invoice-client', USER, step, reason, auth) },
+		]);
+	};
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	describe('definition and structure', () => {
+		it('is a tagged discord-command with the exact definition', () => {
+			expect(wf.name).toBe('Discord Command: invoice-client');
+			expect(wf.tags.map((t) => t.name)).toEqual(['discord-command']);
+			const parsed = parseDefinition(node(wf, 'Command Definition').parameters.jsonOutput);
+			expect(parsed.ok).toBe(true);
+			expect(parsed.definition).toEqual({
+				name: 'invoice-client',
+				description: 'Upload a company invoice for a client',
+				guilds: ['1280482154249457685'],
+				ephemeral: true,
+				whitelist: { users: [], roles: ['1280482268015493131'] },
+				options: [
+					{ type: 11, name: 'invoice', description: 'Invoice (PDF)', required: true },
+					{
+						type: 3,
+						name: 'invoice_date',
+						description: 'Invoice date (YYYY-MM-DD)',
+						required: true,
+						autocomplete: true,
+					},
+					{
+						type: 3,
+						name: 'description',
+						description: "What it's for",
+						required: false,
+						max_length: 1000,
+					},
+				],
+			});
+		});
+
+		it('has the b2b shape: same nodes, same wiring, same I/O parameters', () => {
+			const b2b = built['commands/invoice-b2b'];
+			expect(wf.nodes.map((n) => n.name)).toEqual(b2b.nodes.map((n) => n.name));
+			expect(wf.connections).toEqual(b2b.connections);
+			for (const name of [
+				'Load Employees',
+				'Load Config',
+				'Find Folder',
+				'Check Duplicate',
+				'Download',
+				'Upload',
+				'Post Note',
+				'Post Notice',
+			]) {
+				const mine = node(wf, name);
+				const theirs = node(b2b, name);
+				expect(mine.parameters, name).toEqual(theirs.parameters);
+				expect(mine.credentials, name).toEqual(theirs.credentials);
+				expect(mine.onError, name).toBe(theirs.onError);
+				expect(mine.alwaysOutputData, name).toBe(theirs.alwaysOutputData);
+			}
+			expect(node(wf, 'Find Folder').alwaysOutputData).toBe(true);
+			for (const n of ['Check Duplicate', 'Download', 'Upload']) {
+				expect(targets(wf, n, 1), n).toEqual(['Failure']);
+			}
+		});
+
+		it('keeps the Code nodes thin and runs them for client', () => {
+			const template = require('../workflows/commands/invoice-client.template.json');
+			for (const n of template.nodes.filter((x) => x.type === 'n8n-nodes-base.code')) {
+				if (n.name === 'Stop') continue;
+				expect(n.parameters.jsCode.split('\n')[0], n.name).toBe(
+					'//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js',
+				);
+				expect(n.parameters.jsCode.split('\n').length, n.name).toBeLessThanOrEqual(8);
+				expect(n.parameters.jsCode, n.name).not.toContain("'b2b'");
+				if (n.name !== 'Done' && n.name !== 'Failure') {
+					expect(n.parameters.jsCode, n.name).toContain("('client'");
+				}
+			}
+			for (const n of wf.nodes.filter((x) => x.type === 'n8n-nodes-base.code')) {
+				expect(n.parameters.jsCode, n.name).not.toMatch(/\bthrow\b/);
+			}
+		});
+	});
+
+	describe('autocomplete', () => {
+		it('suggests dates for invoice_date', () => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date(Date.UTC(2026, 7, 20, 10)));
+			const r = runC({
+				mode: 'autocomplete',
+				input: { ...cInteraction({ invoice_date: '2026-08-2' }), kind: 'autocomplete' },
+			});
+			expect(r.reply).toEqual({ choices: [{ name: '2026-08-20', value: '2026-08-20' }] });
+		});
+	});
+
+	describe('validation', () => {
+		const cases = [
+			[
+				'a non-PDF invoice',
+				cInteraction({}, { content_type: 'image/jpeg', filename: 'scan.jpg' }),
+				'`invoice` must be a PDF.',
+			],
+			[
+				'an oversize invoice',
+				cInteraction({}, { size: 20 * 1024 * 1024 + 1 }),
+				'`invoice` is larger than 20 MB.',
+			],
+			[
+				'a bad date',
+				cInteraction({ invoice_date: '2026-08' }),
+				'`invoice_date` must be a date like 2026-08-31.',
+			],
+		];
+		for (const [label, input, copy] of cases) {
+			it(label + ' replies with the exact copy and nothing else runs', () => {
+				const r = runC({ input });
+				expect(r.reply).toEqual({ content: copy });
+				expect(r.order).not.toContain('Load Employees');
+				expect(r.calls.http).toEqual([]);
+				expect(r.calls.drive).toEqual([]);
+				expect(r.messages).toEqual([]);
+			});
+		}
+	});
+
+	describe('upload', () => {
+		it('keeps the attachment name, uploads into Klienci and posts the client notice', () => {
+			const r = runC();
+			expect(r.reply).toEqual({
+				content: 'Uploaded `' + CFILE + '` to `2026/08 - Sierpień/Klienci`.',
+			});
+			expect(r.messages).toEqual([{ channelId: CHANNEL, content: notice('Janek') }]);
+			expect(r.subCalls).toEqual([
+				{
+					node: 'Find Folder',
+					workflowId: 'helper-wf',
+					input: { rootId: 'ROOT', year: 2026, month: 8, personFolderName: 'Klienci' },
+				},
+			]);
+			const BS = String.fromCharCode(92);
+			expect(r.calls.http[0].query.q).toBe(
+				"'KLIENCI' in parents and name='FV 12-2026 Acme O" + BS + "'Neil.pdf' and trashed=false",
+			);
+			expect(r.calls.http[1]).toMatchObject({ node: 'Download', url: CURL });
+			expect(r.calls.drive).toEqual([
+				{
+					node: 'Upload',
+					resource: 'file',
+					operation: 'upload',
+					name: CFILE,
+					folderId: 'KLIENCI',
+					driveId: 'My Drive',
+					binary: PDF_BYTES,
+				},
+			]);
+			expect(r.order.slice(-3)).toEqual(['Done', 'Post Notice', 'Reply Success']);
+		});
+
+		it('writes - when there is no description', () => {
+			const r = runC({ input: cInteraction({ description: undefined }) });
+			expect(r.messages[0].content).toBe(notice('Janek', '-'));
+			const blank = runC({ input: cInteraction({ description: '   ' }) });
+			expect(blank.messages[0].content).toContain('\n\n OPIS Faktury: -\n');
+		});
+
+		it('names the uploader by the Employee row when one matches', () => {
+			expect(runC({ employees: [ROW] }).messages[0].content).toBe(notice('Jan'));
+			expect(runC({ employees: [{ ...ROW, shortname: '' }] }).messages[0].content).toBe(
+				notice('Jan Kowalski'),
+			);
+		});
+
+		it('needs no Employee row: unmatched, ambiguous or incomplete rows still upload', () => {
+			for (const employees of [
+				[],
+				[{ ...ROW, discordID: '222222222222222222' }],
+				[ROW, { ...ROW, fullname: 'Jan Nowak' }],
+			]) {
+				const r = runC({ employees });
+				expect(r.reply.content).toBe('Uploaded `' + CFILE + '` to `2026/08 - Sierpień/Klienci`.');
+				expect(r.messages).toEqual([{ channelId: CHANNEL, content: notice('Janek') }]);
+			}
+			const partial = runC({ employees: [{ discordID: USER, fullname: '', shortname: '' }] });
+			expect(partial.messages[0].content).toBe(notice('Janek'));
+		});
+
+		it('falls back to a mention when no name is known', () => {
+			const r = runC({ input: cInteraction({}, {}, { displayName: '' }) });
+			expect(r.messages[0].content).toBe(notice('<@' + USER + '>'));
+		});
+
+		it('reads the Discord display name from a router-classified interaction', () => {
+			const raw = (member, user) => ({
+				id: 'i1',
+				token: 'tok',
+				application_id: 'app',
+				type: 2,
+				guild_id: '1280482154249457685',
+				channel_id: 'c1',
+				...(member ? { member: { ...member, user, roles: ['1280482268015493131'] } } : { user }),
+				data: {
+					name: 'invoice-client',
+					options: [
+						{ name: 'invoice', type: 11, value: '903' },
+						{ name: 'invoice_date', type: 3, value: '2026-08-14' },
+						{ name: 'description', type: 3, value: 'Hosting' },
+					],
+					resolved: { attachments: { 903: { ...PDF, url: CURL, filename: CFILE } } },
+				},
+			});
+			const uploader = (member, user) => {
+				const input = workflowInput(classifyInteraction(raw(member, user)));
+				expect(input.mode).toBe('command');
+				return runC({ input: input.interaction }).messages[0].content;
+			};
+			const user = { id: USER, global_name: 'Jan K', username: 'jank' };
+			expect(uploader({ nick: 'Janek' }, user)).toBe(notice('Janek'));
+			expect(uploader({ nick: null }, user)).toBe(notice('Jan K'));
+			expect(uploader({}, { id: USER, global_name: null, username: 'jank' })).toBe(notice('jank'));
+		});
+	});
+
+	describe('failures', () => {
+		it('an expired login on the upload: failure reply, auth note, no notice', () => {
+			const r = runC({
+				drive: () => ({ error: 'Authorization failed - please check your credentials' }),
+			});
+			failed(r, 'upload', 'Authorization failed - please check your credentials (HTTP 401)', true);
+			expect(r.order).not.toContain('Post Notice');
+		});
+
+		it('a helper that returns no items fails at folder: call', () => {
+			const r = runC({ folder: null });
+			failed(r, 'folder: call', 'no folder id returned', false);
+		});
+
+		it('an unreadable discord_config table fails at step config', () => {
+			const r = runC({ tableErrors: { discord_config: 'Could not find data table' } });
+			expect(r.reply).toEqual({ content: replies.FAILED });
+			expect(r.stop.note).toBe(
+				failureNote('invoice-client', USER, 'config', 'Could not find data table', false),
+			);
+			expect(r.messages).toEqual([]);
+		});
+
+		it('an unreadable Employee table still fails, even though no row is required', () => {
+			const r = runC({ tableErrors: { Employee: 'Could not find data table' } });
+			failed(r, 'employee', 'Could not find data table', false);
+			expect(r.subCalls).toEqual([]);
+		});
+	});
+});

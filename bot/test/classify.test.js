@@ -177,6 +177,16 @@ describe('classifyInteraction', () => {
 			authorizingIntegrationOwners: { 1: 'u9' },
 		});
 	});
+	it('carries the Discord display name: server nickname, then global name, then username', () => {
+		const cmd = (who) => classifyInteraction({ ...base, type: 2, data: { name: 'x' }, ...who });
+		const user = { id: 'u', global_name: 'Jan K', username: 'jank' };
+		expect(cmd({ member: { nick: 'Janek', user } }).displayName).toBe('Janek');
+		expect(cmd({ member: { nick: null, user } }).displayName).toBe('Jan K');
+		expect(cmd({ member: { user: { id: 'u', global_name: null, username: 'jank' } } }).displayName).toBe('jank');
+		expect(cmd({ user: { id: 'u', global_name: 'DM Name', username: 'dm' } }).displayName).toBe('DM Name');
+		expect(cmd({ user: { id: 'u' } }).displayName).toBe('');
+		expect(classifyInteraction(undefined).displayName).toBe('');
+	});
 	it('context and authorizingIntegrationOwners default when absent', () => {
 		const c = classifyInteraction({ ...base, type: 2, user: { id: 'u' }, data: { name: 'x' } });
 		expect(c.context).toBeNull();
