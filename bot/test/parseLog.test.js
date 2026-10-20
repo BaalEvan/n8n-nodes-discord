@@ -150,6 +150,131 @@ describe('parseLog', () => {
 	});
 });
 
+describe('parseLog on Switch logs', () => {
+	const hint =
+		"[LocalFileSystemSwitch::CreateAsDir] Trying to write to 'rom:' mount path 'rom:/Data/%HOMEPATH%'! ";
+	const error = 'Error: nn::fs::CreateDirectory() failed because the operation is unsupported.';
+	const search = "Search '2002-6364' on the following Error Code List for more information.";
+	const url = 'https://developer.nintendo.com/html/online-docs/x/2002.html';
+	const dashes = '------------';
+	const abort = [
+		'AbortObserver called: Failed: nnFsResult',
+		'  Module: 2',
+		'  Description: 6364',
+		'Condition: nn::Result::IsSuccess()',
+		'Function: CreateDirectory in D:\\sdk\\fs_UserFileSystem.cpp:58',
+	];
+	const dump = "[SnapShotDumper] Dump completed to 'C:\\dumps\\a.nxdmp'";
+
+	it('collects an SDK error and its abort box into one entry', () => {
+		const text = [
+			'UnloadTime: 1.9 ms',
+			hint,
+			'',
+			error,
+			search,
+			url,
+			'',
+			dashes,
+			...abort,
+			dashes,
+			dump,
+			'',
+		].join(NL);
+		const r = parseLog(text, meta);
+		expect(r.embeds).toHaveLength(1);
+		expect(r.embeds[0].title).toBe(error);
+		expect(r.embeds[0].description).toBe(
+			FENCE + [hint, search, url, ...abort, dump].join(NL) + FENCE,
+		);
+	});
+
+	it('handles the newline-stripped abort box', () => {
+		const glued =
+			'AbortObserver called: Failed: nnFsResult  Module: 2  Description: 6364Condition: nn::Result::IsSuccess()';
+		const text = ['', error, search, '', dashes, glued, dashes, dump].join(NL);
+		const r = parseLog(text, meta);
+		expect(r.embeds).toHaveLength(1);
+		expect(r.embeds[0].description).toBe(
+			FENCE +
+				[
+					search,
+					'AbortObserver called: Failed: nnFsResult',
+					'  Module: 2',
+					'  Description: 6364',
+					'Condition: nn::Result::IsSuccess()',
+					dump,
+				].join(NL) +
+				FENCE,
+		);
+	});
+
+	it('titles a glued abort by its failed call and trims text glued after the dump', () => {
+		const glued =
+			'AbortObserver called: Failed: OpenUser(pOutHandle)  Module: 124  Description: 101Function: TryOpenPreselectedUser in account_Api.cpp:330';
+		const start = "[SnapShotDumper] Start dumping to 'C:\\dumps\\a.nxdmp'";
+		const text = [dashes, glued, dashes, start + dump + 'Memory available: 6823936KiB'].join(NL);
+		const r = parseLog(text, meta);
+		expect(r.embeds).toHaveLength(1);
+		expect(r.embeds[0].title).toBe('AbortObserver called: Failed: OpenUser(pOutHandle)');
+		expect(r.embeds[0].description).toBe(
+			FENCE +
+				[
+					'  Module: 124',
+					'  Description: 101',
+					'Function: TryOpenPreselectedUser in account_Api.cpp:330',
+					start,
+					dump,
+				].join(NL) +
+				FENCE,
+		);
+	});
+
+	it('reports an abort box with no SDK error line', () => {
+		const r = parseLog(['plain', dashes, ...abort, dashes, 'next'].join(NL), meta);
+		expect(r.embeds).toHaveLength(1);
+		expect(r.embeds[0].title).toBe(abort[0]);
+		expect(r.embeds[0].description).toBe(FENCE + abort.slice(1).join(NL) + FENCE);
+	});
+
+	it('ends the SDK entry at the first unrelated line', () => {
+		const r = parseLog([error, search, 'Frame: 01172 frm_fps: 59.61'].join(NL), meta);
+		expect(r.embeds[0].description).toBe(FENCE + search + FENCE);
+	});
+
+	it('keeps the parameter line and stack of a managed exception', () => {
+		const at = '  at System.IO.Directory.CreateDirectory (System.String path) [0x00000] in <0>:0 ';
+		const text = [
+			'UnityEngine.SetupCoroutine:InvokeMoveNext(IEnumerator, IntPtr)',
+			'ArgumentException: Path cannot be the empty string or all whitespace.',
+			'Parameter name: path',
+			at,
+			'Frame: 02373  frm_fps: 59.99',
+		].join(NL);
+		const r = parseLog(text, meta);
+		expect(r.embeds).toHaveLength(1);
+		expect(r.embeds[0].description).toBe(FENCE + ['Parameter name: path', at].join(NL) + FENCE);
+	});
+
+	it('reads Unity-format frames as stack lines', () => {
+		const frames = [
+			'ElevenPuzzles.Network.<CreateRoom>d__23:MoveNext()',
+			'System.Runtime.CompilerServices.AsyncTaskMethodBuilder`1:SetException(Exception)',
+			'ElevenPuzzles.Logger:Info(String) (at C:\\Proj\\Assets\\Logger.cs:80)',
+		];
+		const text = ['NullReferenceException: Object reference not set', ...frames, ''].join(NL);
+		const r = parseLog(text, meta);
+		expect(r.embeds[0].description).toBe(FENCE + frames.join(NL) + FENCE);
+	});
+
+	it('does not treat Unity-format frames of plain log lines as exceptions', () => {
+		const text = ['[12/10/2026 11:49:16] Set GlobalTextureMipmapLimit to 0 [1]', 'A.B:C()'].join(
+			NL,
+		);
+		expect(parseLog(text, meta).embeds).toEqual([]);
+	});
+});
+
 describe('findAttachment', () => {
 	const inter = {
 		options: { logfile: '99' },
