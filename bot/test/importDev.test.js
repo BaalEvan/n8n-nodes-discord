@@ -105,6 +105,9 @@ describe('command templates', () => {
 		expect(ORDER).toContain('helpers/clickup-get-task');
 		expect(PUBLISH.has('helpers/clickup-get-task')).toBe(true);
 		expect(ORDER.indexOf('helpers/clickup-get-task')).toBeLessThan(ORDER.indexOf('commands/cl'));
+		expect(ORDER).toContain('helpers/drive-folder');
+		expect(PUBLISH.has('helpers/drive-folder')).toBe(true);
+		expect(ORDER.indexOf('helpers/drive-folder')).toBeLessThan(ORDER.indexOf('commands/changelog'));
 		expect(ORDER).toContain('commands/cl');
 		expect(PUBLISH.has('commands/cl')).toBe(true);
 	});
@@ -141,6 +144,31 @@ describe('optional ClickUp credential', () => {
 		});
 		const t = body.nodes.find((n) => n.name === 'Try ClickUp (Client)');
 		expect(t.credentials).toEqual({ clickUpApi: { id: 'C9', name: 'ClickUp (Client)' } });
+		expect(missing).toEqual([]);
+	});
+});
+
+describe('optional Google Drive credential', () => {
+	const helper = (creds) =>
+		prepareWorkflow(built['helpers/drive-folder'], { credentials: creds, ownerId: OWNER });
+
+	it('keeps the name only and reports it when the credential does not exist yet', () => {
+		const { body, missing } = helper(credentials);
+		const list = body.nodes.find((n) => n.name === 'List Children');
+		expect(list.credentials).toEqual({ googleDriveOAuth2Api: { name: 'Google Drive account' } });
+		expect(missing).toContain('List Children: googleDriveOAuth2Api "Google Drive account"');
+	});
+
+	it('injects the id once the credential exists', () => {
+		const { body, missing } = helper([
+			...credentials,
+			{ id: 'G1', name: 'Google Drive account', type: 'googleDriveOAuth2Api' },
+		]);
+		for (const n of body.nodes.filter((x) => x.type === 'n8n-nodes-base.httpRequest')) {
+			expect(n.credentials, n.name).toEqual({
+				googleDriveOAuth2Api: { id: 'G1', name: 'Google Drive account' },
+			});
+		}
 		expect(missing).toEqual([]);
 	});
 });
@@ -212,6 +240,39 @@ describe('importDev skip', () => {
 		);
 		expect(helperSave).toBeGreaterThan(-1);
 		expect(helperSave).toBeLessThan(clSave);
+	});
+
+	it('stores the Drive folder helper id and seeds no other new config row', async () => {
+		const calls = stubApi();
+		const result = await run(['router', 'sync']);
+		const keys = calls.filter((c) => c.p.endsWith('/rows/upsert') && 'key' in c.body.data);
+		expect(keys.map((c) => c.body.data.key).sort()).toEqual(
+			[
+				'botUserId',
+				'clickupHelperWorkflowId',
+				'driveFolderHelperWorkflowId',
+				'guildIds',
+				'ownerId',
+				'registerGlobal',
+				'webhookBase',
+			].sort(),
+		);
+		const row = keys.find((c) => c.body.data.key === 'driveFolderHelperWorkflowId');
+		expect(row.body.data.value).toBe(result.workflows['helpers/drive-folder'].id);
+		expect(result.workflows['helpers/drive-folder'].name).toBe('Discord Helper: Drive Folder');
+	});
+
+	it('creates the drive_folders table with string path and folderId', async () => {
+		const calls = stubApi();
+		await run(['router', 'sync']);
+		const created = calls.find(
+			(c) => c.method === 'POST' && c.p === '/data-tables' && c.body.name === 'drive_folders',
+		);
+		expect(created.body.columns).toEqual([
+			{ name: 'path', type: 'string' },
+			{ name: 'folderId', type: 'string' },
+		]);
+		expect(TABLES.drive_folders).toEqual(['path', 'folderId']);
 	});
 
 	it('tags only the eight command workflows, not the helper or the listener', async () => {
@@ -397,7 +458,7 @@ describe('importDev skip', () => {
 	it('rejects an unknown key and lists the valid ones, before any request', async () => {
 		const calls = stubApi();
 		await expect(run(['routr'])).rejects.toThrow(
-			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, helpers/clickup-get-task, commands/changelog, commands/cl, commands/parse, commands/preview, commands/prompt, commands/sync, listeners/sync-mirror, router',
+			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, helpers/clickup-get-task, helpers/drive-folder, commands/changelog, commands/cl, commands/parse, commands/preview, commands/prompt, commands/sync, listeners/sync-mirror, router',
 		);
 		expect(calls).toEqual([]);
 	});

@@ -13,6 +13,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { loadModule } = require('./load.js');
+const { simulate } = require('./simulate.js');
 const { parseDefinition } = loadModule('definition');
 
 const BOT_DIR = path.join(__dirname, '..');
@@ -144,6 +145,7 @@ describe('built workflows', () => {
 				'commands/prompt',
 				'commands/sync',
 				'helpers/clickup-get-task',
+				'helpers/drive-folder',
 				'listeners/sync-mirror',
 				'reload-commands',
 				'router',
@@ -164,6 +166,7 @@ describe('built workflows', () => {
 		expect(built['commands/changelog'].name).toBe('Discord Command: changelog');
 		expect(built['commands/prompt'].name).toBe('Discord Command: prompt');
 		expect(built['helpers/clickup-get-task'].name).toBe('Discord Helper: ClickUp Get Task');
+		expect(built['helpers/drive-folder'].name).toBe('Discord Helper: Drive Folder');
 		expect(built['commands/sync'].name).toBe('Discord Command: sync');
 		expect(built['listeners/sync-mirror'].name).toBe('Discord Listener: Sync Mirror');
 	});
@@ -249,6 +252,7 @@ describe('built workflows', () => {
 						[
 							'Discord Bot (live)',
 							'n8n API',
+							'Google Drive account',
 							...parseCredentialList(process.env.CLICKUP_CREDENTIALS),
 						],
 						n.name,
@@ -1293,6 +1297,469 @@ describe('ClickUp helper', () => {
 	});
 });
 
+describe('Drive folder helper', () => {
+	const wf = built['helpers/drive-folder'];
+	const TRIGGER = 'When called by another workflow';
+	const DRIVE = 'https://www.googleapis.com/drive/v3/files';
+	const LIST_URL =
+		"=https://www.googleapis.com/drive/v3/files?q='{{ $('When called by another workflow').first().json.parentId }}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name,createdTime)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true";
+	const httpNodes = () => wf.nodes.filter((n) => n.type === 'n8n-nodes-base.httpRequest');
+
+	it('is an untagged helper whose trigger takes both input modes', () => {
+		expect(wf.tags || []).toEqual([]);
+		const trigger = node(wf, TRIGGER);
+		expect(trigger.parameters.inputSource).toBe('workflowInputs');
+		expect(trigger.parameters.workflowInputs.values.map((v) => v.name)).toEqual([
+			'rootId',
+			'year',
+			'month',
+			'personFolderName',
+			'parentId',
+			'kind',
+			'name',
+			'cachePath',
+		]);
+		expect(wf.settings).toEqual(built['helpers/clickup-get-task'].settings);
+	});
+
+	it('makes the four Drive calls with the Google Drive credential and wired error outputs', () => {
+		const calls = Object.fromEntries(
+			httpNodes().map((n) => [n.name, [n.parameters.method, n.parameters.url]]),
+		);
+		expect(calls).toEqual({
+			'Check Cached': [
+				'GET',
+				"=https://www.googleapis.com/drive/v3/files/{{ $('Find Cached').first().json.folderId }}?fields=id,trashed",
+			],
+			'List Children': ['GET', LIST_URL],
+			'Rename Folder': [
+				'PATCH',
+				"=https://www.googleapis.com/drive/v3/files/{{ $('Pick Folder').first().json.id }}?supportsAllDrives=true",
+			],
+			'Create Folder': ['POST', DRIVE + '?supportsAllDrives=true'],
+		});
+		for (const n of httpNodes()) {
+			expect(n.parameters.authentication, n.name).toBe('predefinedCredentialType');
+			expect(n.parameters.nodeCredentialType, n.name).toBe('googleDriveOAuth2Api');
+			expect(n.credentials, n.name).toEqual({
+				googleDriveOAuth2Api: { name: 'Google Drive account' },
+			});
+			expect(n.onError, n.name).toBe('continueErrorOutput');
+			expect(targets(wf, n.name, 1).length, n.name).toBe(1);
+		}
+		expect(targets(wf, 'Check Cached', 0)).toEqual(['Cache Action']);
+		expect(targets(wf, 'Check Cached', 1)).toEqual(['Cache Action']);
+		for (const n of ['List Children', 'Rename Folder', 'Create Folder']) {
+			expect(targets(wf, n, 1), n).toEqual(['Level Error']);
+		}
+		expect(node(wf, 'List Children').executeOnce).toBe(true);
+		expect(JSON.stringify(wf)).not.toMatch(/authorization/i);
+	});
+
+	it('sends the folder body on create and only the name on rename', () => {
+		const create = node(wf, 'Create Folder').parameters;
+		expect(create.sendBody).toBe(true);
+		expect(create.specifyBody).toBe('json');
+		expect(create.jsonBody).toContain("mimeType: 'application/vnd.google-apps.folder'");
+		expect(create.jsonBody).toContain(
+			"parents: [$('When called by another workflow').first().json.parentId]",
+		);
+		expect(node(wf, 'Rename Folder').parameters.jsonBody).toBe(
+			"={{ JSON.stringify({ name: $('Pick Folder').first().json.rename }) }}",
+		);
+	});
+
+	it('looks in drive_folders before listing, and drops a dead row first', () => {
+		expect(targets(wf, TRIGGER)).toEqual(['Is Level?']);
+		expect(targets(wf, 'Is Level?', 0)).toEqual(['Find Cached']);
+		expect(targets(wf, 'Is Level?', 1)).toEqual(['Plan']);
+		expect(targets(wf, 'Find Cached')).toEqual(['Has Cache']);
+		expect(targets(wf, 'Has Cache', 0)).toEqual(['Check Cached']);
+		expect(targets(wf, 'Has Cache', 1)).toEqual(['List Children']);
+		expect(targets(wf, 'Cache Action')).toEqual(['Cache Switch']);
+		expect(targets(wf, 'Cache Switch', 0)).toEqual(['Cached Result']);
+		expect(targets(wf, 'Cache Switch', 1)).toEqual(['Drop Cached']);
+		expect(targets(wf, 'Cache Switch', 2)).toEqual(['Level Error']);
+		expect(targets(wf, 'Drop Cached')).toEqual(['List Children']);
+		expect(targets(wf, 'List Children', 0)).toEqual(['Pick Folder']);
+		expect(targets(wf, 'Pick Switch', 0)).toEqual(['Folder Result']);
+		expect(targets(wf, 'Pick Switch', 1)).toEqual(['Rename Folder']);
+		expect(targets(wf, 'Pick Switch', 2)).toEqual(['Create Folder']);
+		expect(targets(wf, 'Folder Result')).toEqual(['Save Cache']);
+		expect(targets(wf, 'Save Cache')).toEqual(['Level Result']);
+		const table = (n) => node(wf, n).parameters;
+		for (const [n, op] of [
+			['Find Cached', 'get'],
+			['Drop Cached', 'deleteRows'],
+			['Save Cache', 'upsert'],
+		]) {
+			expect(table(n).operation, n).toBe(op);
+			expect(table(n).dataTableId, n).toEqual({ __rl: true, mode: 'name', value: 'drive_folders' });
+			expect(table(n).filters.conditions, n).toEqual([
+				{
+					keyName: 'path',
+					condition: 'eq',
+					keyValue: "={{ $('When called by another workflow').first().json.cachePath }}",
+				},
+			]);
+		}
+		expect(table('Save Cache').columns.value).toEqual({
+			path: "={{ $('When called by another workflow').first().json.cachePath }}",
+			folderId: '={{ $json.id }}',
+		});
+	});
+
+	it('calls itself once per level and stops at the first failed level', () => {
+		expect(targets(wf, 'Plan')).toEqual(['Plan OK?']);
+		expect(targets(wf, 'Plan OK?', 0)).toEqual(['Year']);
+		const parents = {
+			Year: "={{ $('Plan').first().json.rootId }}",
+			Month: "={{ $('Year').first().json.id }}",
+			Person: "={{ $('Month').first().json.id }}",
+		};
+		for (const [level, next] of [
+			['Year', 'Month'],
+			['Month', 'Person'],
+			['Person', 'Done'],
+		]) {
+			const n = node(wf, level);
+			const kind = level.toLowerCase();
+			expect(n.type).toBe('n8n-nodes-base.executeWorkflow');
+			expect(n.parameters.source).toBe('database');
+			expect(n.parameters.workflowId).toEqual({
+				__rl: true,
+				mode: 'id',
+				value: '={{ $workflow.id }}',
+			});
+			expect(n.parameters.options.waitForSubWorkflow).toBe(true);
+			expect(n.parameters.workflowInputs.value).toEqual({
+				parentId: parents[level],
+				kind,
+				name: "={{ $('Plan').first().json." + kind + '.name }}',
+				cachePath: "={{ $('Plan').first().json." + kind + '.cachePath }}',
+			});
+			expect(n.onError).toBe('continueRegularOutput');
+			expect(targets(wf, level)).toEqual([level + ' OK?']);
+			expect(targets(wf, level + ' OK?', 0)).toEqual([next]);
+		}
+		for (const n of ['Plan OK?', 'Year OK?', 'Month OK?', 'Person OK?']) {
+			expect(targets(wf, n, 1), n).toEqual(['Folder Error']);
+		}
+	});
+
+	it('inlines both libs and never throws', () => {
+		expect(wf.nodes.some((n) => n.type === 'n8n-nodes-base.stopAndError')).toBe(false);
+		for (const n of codeNodes(wf)) {
+			expect(n.parameters.jsCode, n.name).not.toMatch(/\bthrow\b/);
+		}
+		for (const n of [
+			'Plan',
+			'Done',
+			'Folder Error',
+			'Cache Action',
+			'Pick Folder',
+			'Level Error',
+		]) {
+			const code = node(wf, n).parameters.jsCode;
+			expect(code, n).toContain('function monthFolderName');
+			expect(code, n).toContain('function cacheAction');
+		}
+		for (const n of ['Done', 'Folder Error', 'Cached Result', 'Level Result', 'Level Error']) {
+			expect(targets(wf, n), n).toEqual([]);
+		}
+	});
+
+	describe('runs', () => {
+		const SELF = 'DRIVE-HELPER';
+		const helper = { ...wf, id: SELF };
+		const INPUT = {
+			rootId: 'ROOT',
+			year: 2026,
+			month: 8,
+			personFolderName: 'B2B - Jan Kowalski - Firma',
+		};
+		const PATH = '2026/08 - Sierpień/B2B - Jan Kowalski - Firma';
+
+		function fakeDrive(seed = []) {
+			const files = new Map(seed.map((x) => [x.id, { trashed: false, ...x }]));
+			const calls = [];
+			const faults = [];
+			let next = 1;
+			const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+			const listRe = new RegExp(
+				'^' +
+					esc(DRIVE + "?q='") +
+					"([^']+)" +
+					esc(
+						"' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name,createdTime)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true",
+					) +
+					'$',
+			);
+			const checkRe = new RegExp(
+				'^' + esc(DRIVE + '/') + '([^?/]+)' + esc('?fields=id,trashed') + '$',
+			);
+			const renameRe = new RegExp(
+				'^' + esc(DRIVE + '/') + '([^?/]+)' + esc('?supportsAllDrives=true') + '$',
+			);
+			const notFound = {
+				httpCode: '404',
+				message: 'The resource you are requesting could not be found',
+			};
+			function http(req) {
+				calls.push(req);
+				const fault = faults.find((x) => x.node === req.node);
+				if (fault) return { error: fault.error };
+				let m;
+				if (req.method === 'GET' && (m = listRe.exec(req.url))) {
+					const kids = [...files.values()].filter((x) => x.parents.includes(m[1]) && !x.trashed);
+					return {
+						json: { files: kids.map(({ id, name, createdTime }) => ({ id, name, createdTime })) },
+					};
+				}
+				if (req.method === 'GET' && (m = checkRe.exec(req.url))) {
+					const x = files.get(m[1]);
+					return x ? { json: { id: x.id, trashed: x.trashed } } : { error: notFound };
+				}
+				if (req.method === 'PATCH' && (m = renameRe.exec(req.url))) {
+					const x = files.get(m[1]);
+					if (!x) return { error: notFound };
+					x.name = req.body.name;
+					return { json: { id: x.id, name: x.name } };
+				}
+				if (req.method === 'POST' && req.url === DRIVE + '?supportsAllDrives=true') {
+					expect(req.body.mimeType).toBe('application/vnd.google-apps.folder');
+					const id = 'new' + next++;
+					files.set(id, {
+						id,
+						name: req.body.name,
+						parents: req.body.parents,
+						createdTime: '2026-10-20T00:00:0' + next + '.000Z',
+						trashed: false,
+					});
+					return { json: { id, name: req.body.name } };
+				}
+				throw new Error('fake Drive: unexpected ' + req.method + ' ' + req.url);
+			}
+			const count = (node) => calls.filter((c) => c.node === node).length;
+			return { files, calls, faults, http, count };
+		}
+
+		const run = (drive, tables, input = INPUT) =>
+			simulate(helper, input, { http: drive.http, tables }).items.map((i) => i.json);
+		const cacheRow = (tables, p) => (tables.drive_folders || []).find((r) => r.path === p);
+
+		it('creates year, month and person under an empty root and caches them', () => {
+			const drive = fakeDrive();
+			const tables = {};
+			const out = run(drive, tables);
+			expect(out).toEqual([
+				{
+					folderId: 'new3',
+					path: PATH,
+					created: ['2026', '2026/08 - Sierpień', PATH],
+					renamed: [],
+				},
+			]);
+			expect(drive.files.get('new1')).toMatchObject({ name: '2026', parents: ['ROOT'] });
+			expect(drive.files.get('new2')).toMatchObject({ name: '08 - Sierpień', parents: ['new1'] });
+			expect(drive.files.get('new3')).toMatchObject({
+				name: 'B2B - Jan Kowalski - Firma',
+				parents: ['new2'],
+			});
+			expect(tables.drive_folders).toEqual([
+				{ path: '2026', folderId: 'new1' },
+				{ path: '2026/08', folderId: 'new2' },
+				{ path: '2026/08/b2b - jan kowalski - firma', folderId: 'new3' },
+			]);
+		});
+
+		it('a second call for the same path is all cache hits, with no list call', () => {
+			const drive = fakeDrive();
+			const tables = {};
+			run(drive, tables);
+			const before = drive.calls.length;
+			const out = run(drive, tables);
+			expect(out).toEqual([{ folderId: 'new3', path: PATH, created: [], renamed: [] }]);
+			const second = drive.calls.slice(before);
+			expect(second.map((c) => c.node)).toEqual(['Check Cached', 'Check Cached', 'Check Cached']);
+			expect(drive.files.size).toBe(3);
+		});
+
+		it('a level call made twice in a row lists once, then hits the cache', () => {
+			const drive = fakeDrive([
+				{ id: 'y', name: '2026', parents: ['ROOT'], createdTime: '2025-01-01' },
+			]);
+			const tables = {};
+			const level = { parentId: 'ROOT', kind: 'year', name: '2026', cachePath: '2026' };
+			const first = run(drive, tables, level);
+			const second = run(drive, tables, level);
+			expect(first).toEqual([{ id: 'y', created: false, renamed: null }]);
+			expect(second).toEqual([{ id: 'y', created: false, renamed: null }]);
+			expect(drive.count('List Children')).toBe(1);
+			expect(drive.count('Check Cached')).toBe(1);
+		});
+
+		it('reuses existing folders and renames a month variant to the canonical name', () => {
+			const drive = fakeDrive([
+				{ id: 'y', name: '2026', parents: ['ROOT'], createdTime: '2025-01-01T00:00:00.000Z' },
+				{ id: 'en', name: 'August', parents: ['y'], createdTime: '2026-01-01T00:00:00.000Z' },
+				{ id: 'pl', name: 'sierpien', parents: ['y'], createdTime: '2025-12-01T00:00:00.000Z' },
+				{
+					id: 'p',
+					name: 'B2B - Jan  Kowalski - Firma',
+					parents: ['pl'],
+					createdTime: '2025-12-02',
+				},
+			]);
+			const out = run(drive, {});
+			expect(out).toEqual([
+				{
+					folderId: 'p',
+					path: PATH,
+					created: [],
+					renamed: [{ from: 'sierpien', to: '08 - Sierpień' }],
+				},
+			]);
+			expect(drive.files.get('pl').name).toBe('08 - Sierpień');
+			expect(drive.files.get('en').name).toBe('August');
+			expect(drive.files.get('p').name).toBe('B2B - Jan  Kowalski - Firma');
+			expect(drive.count('Create Folder')).toBe(0);
+		});
+
+		for (const [label, kill] of [
+			['deleted', (drive) => ['new2', 'new3'].forEach((id) => drive.files.delete(id))],
+			[
+				'trashed',
+				(drive) => ['new2', 'new3'].forEach((id) => (drive.files.get(id).trashed = true)),
+			],
+		]) {
+			it('drops a cached month folder that was ' + label + ' on Drive and recreates it', () => {
+				const drive = fakeDrive();
+				const tables = {};
+				run(drive, tables);
+				kill(drive);
+				const out = run(drive, tables);
+				expect(out).toEqual([
+					{
+						folderId: 'new5',
+						path: PATH,
+						created: ['2026/08 - Sierpień', PATH],
+						renamed: [],
+					},
+				]);
+				expect(cacheRow(tables, '2026/08').folderId).toBe('new4');
+				expect(tables.drive_folders.filter((r) => r.path === '2026/08')).toHaveLength(1);
+				expect(drive.files.get('new4')).toMatchObject({ name: '08 - Sierpień', parents: ['new1'] });
+			});
+		}
+
+		it('keeps the cache row and reports an auth error when the cache check gets 401', () => {
+			const drive = fakeDrive();
+			const tables = {};
+			run(drive, tables);
+			drive.faults.push({
+				node: 'Check Cached',
+				error: { httpCode: '401', message: 'Unauthorized' },
+			});
+			const out = run(drive, tables);
+			expect(out).toEqual([
+				{ error: { step: 'year: cache', message: 'Unauthorized', httpCode: 401, auth: true } },
+			]);
+			expect(cacheRow(tables, '2026').folderId).toBe('new1');
+			expect(tables.drive_folders).toHaveLength(3);
+		});
+
+		it('stops at the first level whose listing fails, without calling the next level', () => {
+			const drive = fakeDrive();
+			drive.faults.push({
+				node: 'List Children',
+				error: { httpCode: '403', message: 'Forbidden', description: 'Insufficient Permission' },
+			});
+			const r = simulate(helper, INPUT, { http: drive.http });
+			expect(r.items.map((i) => i.json)).toEqual([
+				{
+					error: {
+						step: 'year: list',
+						message: 'Insufficient Permission',
+						httpCode: 403,
+						auth: true,
+					},
+				},
+			]);
+			expect(r.env.subCalls.map((c) => c.node)).toEqual(['Year']);
+		});
+
+		it('labels a failed month rename and a failed person create', () => {
+			const drive = fakeDrive([
+				{ id: 'y', name: '2026', parents: ['ROOT'], createdTime: '2025-01-01' },
+				{ id: 'pl', name: 'sierpien', parents: ['y'], createdTime: '2025-01-02' },
+			]);
+			drive.faults.push({
+				node: 'Rename Folder',
+				error: { httpCode: '500', message: 'Backend Error' },
+			});
+			expect(run(drive, {})).toEqual([
+				{ error: { step: 'month: rename', message: 'Backend Error', httpCode: 500, auth: false } },
+			]);
+			const drive2 = fakeDrive();
+			drive2.faults.push({
+				node: 'Create Folder',
+				error: { message: 'invalid_grant', description: 'Token has been expired or revoked.' },
+			});
+			const r = simulate(helper, INPUT, { http: drive2.http });
+			expect(r.items.map((i) => i.json)).toEqual([
+				{
+					error: {
+						step: 'year: create',
+						message: 'Token has been expired or revoked.',
+						httpCode: null,
+						auth: true,
+					},
+				},
+			]);
+		});
+
+		it('returns an input error with no Drive call', () => {
+			const drive = fakeDrive();
+			expect(run(drive, {}, { ...INPUT, month: 13 })).toEqual([
+				{
+					error: {
+						step: 'input',
+						message: 'missing or invalid month',
+						httpCode: null,
+						auth: false,
+					},
+				},
+			]);
+			expect(drive.calls).toEqual([]);
+		});
+
+		it('reports a level call that could not run', () => {
+			const drive = fakeDrive();
+			const r = simulate(helper, INPUT, { http: drive.http, workflows: {} });
+			expect(r.items.map((i) => i.json)).toEqual([
+				{
+					error: {
+						step: 'year: call',
+						message: 'Workflow does not exist.',
+						httpCode: null,
+						auth: false,
+					},
+				},
+			]);
+		});
+
+		it('passes only its own id to the level calls', () => {
+			const r = simulate(helper, INPUT, { http: fakeDrive().http });
+			expect(r.env.subCalls.map((c) => [c.node, c.workflowId, c.input.kind])).toEqual([
+				['Year', SELF, 'year'],
+				['Month', SELF, 'month'],
+				['Person', SELF, 'person'],
+			]);
+		});
+	});
+});
+
 describe('cl command', () => {
 	const wf = built['commands/cl'];
 	const TRIGGER = 'When called by another workflow';
@@ -1672,6 +2139,7 @@ describe('writeAll', () => {
 			'commands/prompt.json',
 			'commands/sync.json',
 			'helpers/clickup-get-task.json',
+			'helpers/drive-folder.json',
 			'listeners/sync-mirror.json',
 			'reload-commands.json',
 			'router.json',

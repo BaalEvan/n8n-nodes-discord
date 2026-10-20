@@ -1,0 +1,1377 @@
+{
+	"name": "Discord Helper: Drive Folder",
+	"nodes": [
+		{
+			"id": "75b18477-a04b-58d4-84f6-c13425ec7b4a",
+			"name": "When called by another workflow",
+			"type": "n8n-nodes-base.executeWorkflowTrigger",
+			"typeVersion": 1.3,
+			"position": [
+				0,
+				400
+			],
+			"parameters": {
+				"inputSource": "workflowInputs",
+				"workflowInputs": {
+					"values": [
+						{
+							"name": "rootId",
+							"type": "string"
+						},
+						{
+							"name": "year",
+							"type": "any"
+						},
+						{
+							"name": "month",
+							"type": "any"
+						},
+						{
+							"name": "personFolderName",
+							"type": "string"
+						},
+						{
+							"name": "parentId",
+							"type": "string"
+						},
+						{
+							"name": "kind",
+							"type": "string"
+						},
+						{
+							"name": "name",
+							"type": "string"
+						},
+						{
+							"name": "cachePath",
+							"type": "string"
+						}
+					]
+				}
+			},
+			"notes": "Callers pass rootId, year, month (1-12) and personFolderName and get { folderId, path, created, renamed } or { error: { step, message, httpCode, auth } }. The Year, Month and Person nodes call this same workflow with parentId, kind, name and cachePath to resolve one folder level."
+		},
+		{
+			"id": "b5176c78-1064-5d1b-8652-dd30e8c419bc",
+			"name": "Is Level?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				220,
+				400
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "b6df657b-a65b-5465-8763-d8a464aea5b2",
+							"leftValue": "={{ $json.kind || '' }}",
+							"rightValue": "",
+							"operator": {
+								"type": "string",
+								"operation": "notEmpty",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "2ec0b95e-acb2-5d1e-8656-22a3984965e5",
+			"name": "Plan",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				440,
+				100
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js\nreturn [{ json: folderPlan($('When called by another workflow').first().json) }];"
+			}
+		},
+		{
+			"id": "ad02059f-85b2-5af7-8073-8d73d605e87e",
+			"name": "Plan OK?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				660,
+				100
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "378dd852-5e85-5ebd-8abb-767a869c31a2",
+							"leftValue": "={{ !$json.error }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "1d7034f0-6d24-524e-81aa-ac1080f98c76",
+			"name": "Year",
+			"type": "n8n-nodes-base.executeWorkflow",
+			"typeVersion": 1.4,
+			"position": [
+				880,
+				0
+			],
+			"parameters": {
+				"source": "database",
+				"workflowId": {
+					"__rl": true,
+					"mode": "id",
+					"value": "={{ $workflow.id }}"
+				},
+				"workflowInputs": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"parentId": "={{ $('Plan').first().json.rootId }}",
+						"kind": "year",
+						"name": "={{ $('Plan').first().json.year.name }}",
+						"cachePath": "={{ $('Plan').first().json.year.cachePath }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "parentId",
+							"displayName": "parentId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						},
+						{
+							"id": "kind",
+							"displayName": "kind",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						},
+						{
+							"id": "name",
+							"displayName": "name",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						},
+						{
+							"id": "cachePath",
+							"displayName": "cachePath",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				},
+				"mode": "once",
+				"options": {
+					"waitForSubWorkflow": true
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "26349fe3-beb2-5b3a-85ec-c3314f04eca7",
+			"name": "Year OK?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1100,
+				0
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "40868bc1-0f43-5c8a-85f6-51a9adbe3f5b",
+							"leftValue": "={{ !$json.error && !!$json.id }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "16144661-3d05-5f7a-833e-bfe8cca39d50",
+			"name": "Month",
+			"type": "n8n-nodes-base.executeWorkflow",
+			"typeVersion": 1.4,
+			"position": [
+				1320,
+				0
+			],
+			"parameters": {
+				"source": "database",
+				"workflowId": {
+					"__rl": true,
+					"mode": "id",
+					"value": "={{ $workflow.id }}"
+				},
+				"workflowInputs": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"parentId": "={{ $('Year').first().json.id }}",
+						"kind": "month",
+						"name": "={{ $('Plan').first().json.month.name }}",
+						"cachePath": "={{ $('Plan').first().json.month.cachePath }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "parentId",
+							"displayName": "parentId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						},
+						{
+							"id": "kind",
+							"displayName": "kind",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						},
+						{
+							"id": "name",
+							"displayName": "name",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						},
+						{
+							"id": "cachePath",
+							"displayName": "cachePath",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				},
+				"mode": "once",
+				"options": {
+					"waitForSubWorkflow": true
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "0fb746db-cb5c-509a-869c-5b065c52638b",
+			"name": "Month OK?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1540,
+				0
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "db5feca8-be28-54ea-81e5-fd52ff32ccc7",
+							"leftValue": "={{ !$json.error && !!$json.id }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "bd0e7793-7bdf-5df4-894f-13047910ddbd",
+			"name": "Person",
+			"type": "n8n-nodes-base.executeWorkflow",
+			"typeVersion": 1.4,
+			"position": [
+				1760,
+				0
+			],
+			"parameters": {
+				"source": "database",
+				"workflowId": {
+					"__rl": true,
+					"mode": "id",
+					"value": "={{ $workflow.id }}"
+				},
+				"workflowInputs": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"parentId": "={{ $('Month').first().json.id }}",
+						"kind": "person",
+						"name": "={{ $('Plan').first().json.person.name }}",
+						"cachePath": "={{ $('Plan').first().json.person.cachePath }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "parentId",
+							"displayName": "parentId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						},
+						{
+							"id": "kind",
+							"displayName": "kind",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						},
+						{
+							"id": "name",
+							"displayName": "name",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						},
+						{
+							"id": "cachePath",
+							"displayName": "cachePath",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				},
+				"mode": "once",
+				"options": {
+					"waitForSubWorkflow": true
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "79471ebb-5555-5e74-815f-0043d2947886",
+			"name": "Person OK?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1980,
+				0
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "292c08d4-f6ac-5eec-8b8a-1bd48f3c667c",
+							"leftValue": "={{ !$json.error && !!$json.id }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "2d9302ef-0e3c-5b21-8488-06015039d7b7",
+			"name": "Done",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				2200,
+				0
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js\nreturn [{ json: folderDone($('Plan').first().json, [$('Year').first().json, $('Month').first().json, $('Person').first().json]) }];"
+			}
+		},
+		{
+			"id": "7ed71cbb-ce0f-529b-8fa5-be7fdc4b22f9",
+			"name": "Folder Error",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				2200,
+				200
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js\nconst kind = $('Person').isExecuted ? 'person' : $('Month').isExecuted ? 'month' : $('Year').isExecuted ? 'year' : 'input';\nreturn [{ json: folderFailure(kind, $input.first().json) }];"
+			}
+		},
+		{
+			"id": "17038d61-1801-5bfe-8b91-db79d59dab1e",
+			"name": "Find Cached",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				440,
+				600
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "drive_folders"
+				},
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "path",
+							"condition": "eq",
+							"keyValue": "={{ $('When called by another workflow').first().json.cachePath }}"
+						}
+					]
+				},
+				"limit": 1
+			},
+			"alwaysOutputData": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "b5f55b41-490c-5ff3-8b5a-37c998d7828a",
+			"name": "Has Cache",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				660,
+				600
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "de2d4e57-10bf-58ee-8d23-908fe43c0526",
+							"leftValue": "={{ $json.folderId || '' }}",
+							"rightValue": "",
+							"operator": {
+								"type": "string",
+								"operation": "notEmpty",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "77f7873f-25f6-529c-8e35-ee952d3f7bc0",
+			"name": "Check Cached",
+			"type": "n8n-nodes-base.httpRequest",
+			"typeVersion": 4.2,
+			"position": [
+				880,
+				500
+			],
+			"parameters": {
+				"method": "GET",
+				"url": "=https://www.googleapis.com/drive/v3/files/{{ $('Find Cached').first().json.folderId }}?fields=id,trashed",
+				"authentication": "predefinedCredentialType",
+				"nodeCredentialType": "googleDriveOAuth2Api",
+				"options": {}
+			},
+			"credentials": {
+				"googleDriveOAuth2Api": {
+					"name": "Google Drive account"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "9847ce57-38e4-5362-8082-f89d8e4dd805",
+			"name": "Cache Action",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1100,
+				500
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js\nconst check = $input.first().json;\nreturn [{ json: { action: cacheAction(check), id: $('Find Cached').first().json.folderId, check: check } }];"
+			}
+		},
+		{
+			"id": "c0009e54-ba15-505c-837b-269a0ee9e0cf",
+			"name": "Cache Switch",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				1320,
+				500
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "26667c15-2bcf-5963-81e2-884a2e0cf534",
+										"leftValue": "={{ $json.action }}",
+										"rightValue": "use",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "use"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "7f10167a-c280-5dd3-80a9-665a452d181b",
+										"leftValue": "={{ $json.action }}",
+										"rightValue": "drop",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "drop"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "b63be157-b4bc-551f-8ba0-2f8ee1171263",
+										"leftValue": "={{ $json.action }}",
+										"rightValue": "error",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "error"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "aa69e9f5-cca6-5159-8290-17468a05bed0",
+			"name": "Cached Result",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1540,
+				400
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js\nreturn [{ json: levelResult({ action: 'use', id: $json.id }, null) }];"
+			}
+		},
+		{
+			"id": "55057c6c-0589-5328-8fc2-90173b6812e2",
+			"name": "Drop Cached",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				1540,
+				600
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "deleteRows",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "drive_folders"
+				},
+				"matchType": "allConditions",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "path",
+							"condition": "eq",
+							"keyValue": "={{ $('When called by another workflow').first().json.cachePath }}"
+						}
+					]
+				},
+				"options": {}
+			},
+			"alwaysOutputData": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "b7c7bcaa-a1e2-5542-8dd2-9c4ec141f490",
+			"name": "List Children",
+			"type": "n8n-nodes-base.httpRequest",
+			"typeVersion": 4.2,
+			"position": [
+				1760,
+				700
+			],
+			"parameters": {
+				"method": "GET",
+				"url": "=https://www.googleapis.com/drive/v3/files?q='{{ $('When called by another workflow').first().json.parentId }}' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false&fields=files(id,name,createdTime)&pageSize=1000&supportsAllDrives=true&includeItemsFromAllDrives=true",
+				"authentication": "predefinedCredentialType",
+				"nodeCredentialType": "googleDriveOAuth2Api",
+				"options": {}
+			},
+			"credentials": {
+				"googleDriveOAuth2Api": {
+					"name": "Google Drive account"
+				}
+			},
+			"onError": "continueErrorOutput",
+			"executeOnce": true
+		},
+		{
+			"id": "0d050be8-a9d0-5d8f-852d-3e9911cb2996",
+			"name": "Pick Folder",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1980,
+				700
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js\nconst t = $('When called by another workflow').first().json;\nreturn [{ json: pickLevel(t.kind, $input.first().json.files, t.name) }];"
+			}
+		},
+		{
+			"id": "f65e85a1-4264-52c3-8b7a-33984dde8f6f",
+			"name": "Pick Switch",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				2200,
+				700
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "78602109-b782-5232-880b-ee54e92539d1",
+										"leftValue": "={{ $json.action }}",
+										"rightValue": "use",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "use"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "e205cf5f-b950-5a2b-86d2-c0a6157043ec",
+										"leftValue": "={{ $json.action }}",
+										"rightValue": "rename",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "rename"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "33c8d7e5-4438-5656-8e4f-d98116a9e2c2",
+										"leftValue": "={{ $json.action }}",
+										"rightValue": "create",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "create"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "c0b0e690-ca4d-5c47-836c-c73b77f7be79",
+			"name": "Rename Folder",
+			"type": "n8n-nodes-base.httpRequest",
+			"typeVersion": 4.2,
+			"position": [
+				2420,
+				700
+			],
+			"parameters": {
+				"method": "PATCH",
+				"url": "=https://www.googleapis.com/drive/v3/files/{{ $('Pick Folder').first().json.id }}?supportsAllDrives=true",
+				"authentication": "predefinedCredentialType",
+				"nodeCredentialType": "googleDriveOAuth2Api",
+				"sendBody": true,
+				"specifyBody": "json",
+				"jsonBody": "={{ JSON.stringify({ name: $('Pick Folder').first().json.rename }) }}",
+				"options": {}
+			},
+			"credentials": {
+				"googleDriveOAuth2Api": {
+					"name": "Google Drive account"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "f6de5986-2ac0-5a4e-823c-9e80b048ca1a",
+			"name": "Create Folder",
+			"type": "n8n-nodes-base.httpRequest",
+			"typeVersion": 4.2,
+			"position": [
+				2420,
+				900
+			],
+			"parameters": {
+				"method": "POST",
+				"url": "https://www.googleapis.com/drive/v3/files?supportsAllDrives=true",
+				"authentication": "predefinedCredentialType",
+				"nodeCredentialType": "googleDriveOAuth2Api",
+				"sendBody": true,
+				"specifyBody": "json",
+				"jsonBody": "={{ JSON.stringify({ name: $('When called by another workflow').first().json.name, mimeType: 'application/vnd.google-apps.folder', parents: [$('When called by another workflow').first().json.parentId] }) }}",
+				"options": {}
+			},
+			"credentials": {
+				"googleDriveOAuth2Api": {
+					"name": "Google Drive account"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "8c611f33-184f-55e6-8f09-a812c01a853d",
+			"name": "Folder Result",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				2640,
+				600
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js\nreturn [{ json: levelResult($('Pick Folder').first().json, $input.first().json) }];"
+			}
+		},
+		{
+			"id": "cbb32946-67cf-5487-81ed-ab7071d06324",
+			"name": "Save Cache",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				2860,
+				600
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "upsert",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "drive_folders"
+				},
+				"matchType": "allConditions",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "path",
+							"condition": "eq",
+							"keyValue": "={{ $('When called by another workflow').first().json.cachePath }}"
+						}
+					]
+				},
+				"columns": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"path": "={{ $('When called by another workflow').first().json.cachePath }}",
+						"folderId": "={{ $json.id }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "path",
+							"displayName": "path",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string",
+							"readOnly": false,
+							"removed": false
+						},
+						{
+							"id": "folderId",
+							"displayName": "folderId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string",
+							"readOnly": false,
+							"removed": false
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": false
+				},
+				"options": {}
+			},
+			"alwaysOutputData": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "db94b80b-eead-53b0-87ca-9b674ecd55bd",
+			"name": "Level Result",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				3080,
+				600
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "return [{ json: $('Folder Result').first().json }];"
+			}
+		},
+		{
+			"id": "2913b4ef-1bef-5474-8c7d-4859adc49c67",
+			"name": "Level Error",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				2640,
+				1000
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js\nconst t = $('When called by another workflow').first().json;\nconst op = $('Create Folder').isExecuted ? 'create' : $('Rename Folder').isExecuted ? 'rename' : $('List Children').isExecuted ? 'list' : 'cache';\nconst item = $input.first().json;\nreturn [{ json: levelError(t.kind, op, op === 'cache' ? item.check : item) }];"
+			}
+		}
+	],
+	"connections": {
+		"When called by another workflow": {
+			"main": [
+				[
+					{
+						"node": "Is Level?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Is Level?": {
+			"main": [
+				[
+					{
+						"node": "Find Cached",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Plan",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Plan": {
+			"main": [
+				[
+					{
+						"node": "Plan OK?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Plan OK?": {
+			"main": [
+				[
+					{
+						"node": "Year",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Folder Error",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Year": {
+			"main": [
+				[
+					{
+						"node": "Year OK?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Year OK?": {
+			"main": [
+				[
+					{
+						"node": "Month",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Folder Error",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Month": {
+			"main": [
+				[
+					{
+						"node": "Month OK?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Month OK?": {
+			"main": [
+				[
+					{
+						"node": "Person",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Folder Error",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Person": {
+			"main": [
+				[
+					{
+						"node": "Person OK?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Person OK?": {
+			"main": [
+				[
+					{
+						"node": "Done",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Folder Error",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Find Cached": {
+			"main": [
+				[
+					{
+						"node": "Has Cache",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Has Cache": {
+			"main": [
+				[
+					{
+						"node": "Check Cached",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "List Children",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Check Cached": {
+			"main": [
+				[
+					{
+						"node": "Cache Action",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Cache Action",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Cache Action": {
+			"main": [
+				[
+					{
+						"node": "Cache Switch",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Cache Switch": {
+			"main": [
+				[
+					{
+						"node": "Cached Result",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Drop Cached",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Level Error",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Drop Cached": {
+			"main": [
+				[
+					{
+						"node": "List Children",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"List Children": {
+			"main": [
+				[
+					{
+						"node": "Pick Folder",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Level Error",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Pick Folder": {
+			"main": [
+				[
+					{
+						"node": "Pick Switch",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Pick Switch": {
+			"main": [
+				[
+					{
+						"node": "Folder Result",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Rename Folder",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Create Folder",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Rename Folder": {
+			"main": [
+				[
+					{
+						"node": "Folder Result",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Level Error",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Create Folder": {
+			"main": [
+				[
+					{
+						"node": "Folder Result",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Level Error",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Folder Result": {
+			"main": [
+				[
+					{
+						"node": "Save Cache",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Save Cache": {
+			"main": [
+				[
+					{
+						"node": "Level Result",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	}
+}

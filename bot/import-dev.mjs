@@ -34,6 +34,7 @@ export const TABLES = {
 		'mirrorMessageId',
 		{ name: 'createdUtc', type: 'date' },
 	],
+	drive_folders: ['path', 'folderId'],
 };
 
 export const LISTENERS = {
@@ -60,8 +61,11 @@ export const ORDER = [
 	...listenerTemplateNames(BOT_DIR),
 	'router',
 ];
-export const HELPER_CONFIG_KEYS = { 'helpers/clickup-get-task': 'clickupHelperWorkflowId' };
-const OPTIONAL_CREDENTIAL_TYPES = new Set(['clickUpApi']);
+export const HELPER_CONFIG_KEYS = {
+	'helpers/clickup-get-task': 'clickupHelperWorkflowId',
+	'helpers/drive-folder': 'driveFolderHelperWorkflowId',
+};
+const OPTIONAL_CREDENTIAL_TYPES = new Set(['clickUpApi', 'googleDriveOAuth2Api']);
 export const PUBLISH = new Set(ORDER.filter((key) => key !== 'router'));
 
 export function prepareWorkflow(wf, { credentials, ownerId }) {
