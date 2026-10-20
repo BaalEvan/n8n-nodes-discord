@@ -90,7 +90,10 @@ const helperStub = (output) => {
 			{
 				name: 'Out',
 				type: 'n8n-nodes-base.code',
-				parameters: { jsCode: 'return [{ json: ' + JSON.stringify(output) + ' }];' },
+				parameters: {
+					jsCode:
+						output === null ? 'return [];' : 'return [{ json: ' + JSON.stringify(output) + ' }];',
+				},
 			},
 		],
 		connections: { [trigger.name]: { main: [[{ node: 'Out', type: 'main', index: 0 }]] } },
@@ -141,6 +144,7 @@ function run(wf, opts = {}) {
 		reply: r.items[0] && r.items[0].json,
 		messages: r.env.messages.map((m) => ({ channelId: m.channelId, content: m.content })),
 		subCalls: r.env.subCalls,
+		stop: r.data.has('Stop') ? r.data.get('Stop')[0][0].json : undefined,
 		calls,
 	};
 }
@@ -245,6 +249,7 @@ describe('/invoice-b2b', () => {
 			expect(node(wf, 'Post Notice').parameters.channelId).toBe('={{ $json.channelId }}');
 			expect(node(wf, 'Post Notice').parameters.content).toBe('={{ $json.notice }}');
 			expect(node(wf, 'Find Folder').onError).toBe('continueRegularOutput');
+			expect(node(wf, 'Find Folder').alwaysOutputData).toBe(true);
 			expect(node(wf, 'Load Employees').onError).toBe('continueRegularOutput');
 			expect(node(wf, 'Load Config').onError).toBe('continueRegularOutput');
 		});
@@ -519,6 +524,17 @@ describe('/invoice-b2b', () => {
 			expect(r.subCalls).toEqual([]);
 		});
 
+		it('an unreadable discord_config table fails at step config, not as missing keys', () => {
+			const r = run(wf, { tableErrors: { discord_config: 'Could not find data table' } });
+			expect(r.reply).toEqual({ content: replies.FAILED });
+			expect(r.stop.note).toBe(
+				failureNote('invoice-b2b', USER, 'config', 'Could not find data table', false),
+			);
+			expect(r.messages).toEqual([]);
+			expect(r.subCalls).toEqual([]);
+			expect(r.calls.http).toEqual([]);
+		});
+
 		it('with no channel configured the user still gets the failure reply', () => {
 			const r = run(wf, { config: CONFIG.filter((c) => c.key !== 'invoiceNotifyChannelId') });
 			expect(r.reply).toEqual({ content: replies.FAILED });
@@ -659,6 +675,22 @@ describe('/invoice-b2b', () => {
 			expect(r.order).toContain('Upload');
 			expect(r.order).not.toContain('Done');
 			expect(r.order).not.toContain('Post Notice');
+		});
+
+		it('a helper that returns no items fails at folder: call instead of ending silently', () => {
+			const r = run(wf, { folder: null });
+			failed(r, 'folder: call', 'no folder id returned', false);
+			expect(r.calls.http).toEqual([]);
+			expect(r.calls.drive).toEqual([]);
+			expect(r.order[r.order.length - 1]).toBe('Reply');
+		});
+
+		it('an upload whose Google token refresh failed carries the auth line', () => {
+			const GRANT =
+				'The provided authorization grant (e.g., authorization code, resource owner credentials) or refresh token is invalid, expired, revoked, does not match the redirection URI used in the authorization request, or was issued to another client.';
+			const r = run(wf, { drive: () => ({ error: { message: GRANT } }) });
+			failed(r, 'upload', GRANT, true);
+			expect(r.messages[0].content.endsWith('\n' + AUTH_LINE)).toBe(true);
 		});
 
 		it('an upload 401 as an error object is an auth error too', () => {

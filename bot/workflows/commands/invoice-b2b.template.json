@@ -408,6 +408,7 @@
 					"waitForSubWorkflow": true
 				}
 			},
+			"alwaysOutputData": true,
 			"onError": "continueRegularOutput"
 		},
 		{

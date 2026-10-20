@@ -36,6 +36,13 @@ var FLOW_STATUS_MESSAGES = {
 	403: 'Forbidden - perhaps check your credentials?',
 };
 
+var FLOW_AUTH_TEXT =
+	/authorization grant|invalid_grant|Token has been expired or revoked|invalid_token/i;
+
+function flowAuthText(item) {
+	return FLOW_AUTH_TEXT.test(JSON.stringify(item === undefined ? null : item));
+}
+
 function flowDisplayName(interaction) {
 	var inter = interaction || {};
 	var member = inter.member || {};
@@ -120,6 +127,15 @@ function flowPlan(command, input, employees, config) {
 			failureNote(spec.slash, userId, 'employee', driveError(broken).message, false),
 		);
 	}
+	var unread = (config || []).filter(function (r) {
+		return r && r.error !== undefined && r.key === undefined;
+	})[0];
+	if (unread) {
+		return stop(
+			replies.FAILED,
+			failureNote(spec.slash, userId, 'config', driveError(unread).message, false),
+		);
+	}
 	var found = findEmployee(rows, userId);
 	var row = found.ok ? found.row : null;
 	if (spec.employee) {
@@ -197,12 +213,13 @@ function flowRequestError(item, drive) {
 	}
 	var auth =
 		drive &&
-		isDriveAuthError({
+		(isDriveAuthError({
 			httpCode: code,
 			url: d.raw.url,
 			message: d.raw.message,
 			description: d.raw.description,
-		});
+		}) ||
+			flowAuthText(item));
 	return { reason: flowWithCode(d.message, code), auth: auth === true };
 }
 
@@ -214,7 +231,11 @@ function flowFailure(plan, step, item, uploaded) {
 		info = { step: step, reason: e.reason, auth: e.auth };
 	} else {
 		var f = folderFailure('folder', item).error;
-		info = { step: f.step, reason: flowWithCode(f.message, f.httpCode), auth: f.auth === true };
+		info = {
+			step: f.step,
+			reason: flowWithCode(f.message, f.httpCode),
+			auth: f.auth === true || flowAuthText(item),
+		};
 	}
 	var done = uploaded || [];
 	var reason = info.reason;

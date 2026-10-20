@@ -17,6 +17,7 @@ const {
 } = loadModule('invoiceFlow', ['invoice', 'driveFolder']);
 const {
 	replies,
+	notices,
 	failureNote,
 	notRegisteredNote,
 	ambiguousNote,
@@ -315,6 +316,30 @@ describe('flowPlan', () => {
 			channelId: CHANNEL,
 		});
 	});
+	it('fails at step config when the discord_config table cannot be read', () => {
+		const r = flowPlan(
+			'b2b',
+			input,
+			[ROW],
+			[{ error: 'Could not find data table discord_config' }],
+		);
+		expect(r).toEqual({
+			action: 'stop',
+			content: replies.FAILED,
+			note: failureNote(
+				'invoice-b2b',
+				USER,
+				'config',
+				'Could not find data table discord_config',
+				false,
+			),
+			channelId: '',
+		});
+		expect(r.note).not.toContain('missing');
+		expect(
+			flowPlan('client', input, [], [{ error: { message: 'Bad request', httpCode: 400 } }]).note,
+		).toBe(failureNote('invoice-client', USER, 'config', 'Bad request', false));
+	});
 	it('lets a client through with no Employee row and keeps a matching row', () => {
 		const client = flowInput('client', {
 			userId: USER,
@@ -434,6 +459,50 @@ describe('flowFailure', () => {
 		expect(flowFailure(plan, 'upload', { error: 'invalid_grant' })).toEqual(
 			stop('upload', 'invalid_grant', true),
 		);
+	});
+	describe('a Google OAuth refresh failure is an expired login', () => {
+		const GRANT =
+			'The provided authorization grant (e.g., authorization code, resource owner credentials) or refresh token is invalid, expired, revoked, does not match the redirection URI used in the authorization request, or was issued to another client.';
+		const texts = [
+			GRANT,
+			'invalid_grant',
+			'Token has been expired or revoked.',
+			'invalid_token',
+			'Error: Authorization grant is invalid',
+		];
+		for (const t of texts) {
+			it('in the message: ' + t.slice(0, 40), () => {
+				expect(flowFailure(plan, 'upload', { error: { message: t } }).note).toBe(
+					failureNote('invoice-b2b', USER, 'upload', t, true),
+				);
+				expect(flowFailure(plan, 'duplicate check', { error: t }).note).toContain(
+					'\n' + notices.DRIVE_AUTH_HINT,
+				);
+			});
+			it('in the description: ' + t.slice(0, 40), () => {
+				const r = flowFailure(plan, 'upload', {
+					error: { message: 'Request failed', description: t },
+				});
+				expect(r).toEqual(stop('upload', t, true));
+			});
+		}
+		it('in a nested cause', () => {
+			const r = flowFailure(plan, 'upload', {
+				error: { message: 'Request failed', cause: { error: { error: 'invalid_grant' } } },
+			});
+			expect(r).toEqual(stop('upload', 'Request failed', true));
+		});
+		it('from the folder helper even when it did not flag auth', () => {
+			const r = flowFailure(plan, '', {
+				error: { step: 'year: list', message: GRANT, httpCode: 400, auth: false },
+			});
+			expect(r).toEqual(stop('year: list', GRANT + ' (HTTP 400)', true));
+		});
+		it('but never on the Discord download', () => {
+			expect(flowFailure(plan, 'download', { error: 'invalid_grant' })).toEqual(
+				stop('download', 'invalid_grant', false),
+			);
+		});
 	});
 	it('keeps other Drive errors without the auth line', () => {
 		expect(

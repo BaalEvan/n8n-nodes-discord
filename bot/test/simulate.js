@@ -126,8 +126,7 @@ function runWorkflow(wf, input, env, depth = 0) {
 				} else {
 					throw new Error('simulate: no dataTable operation ' + p.operation);
 				}
-				out = out.map((r) => ({ json: { ...r } }));
-				return [out.length || !node.alwaysOutputData ? out : [{ json: {} }]];
+				return [out.map((r) => ({ json: { ...r } }))];
 			}
 			case 'n8n-nodes-base.httpRequest': {
 				const body = p.sendBody ? resolve(p.jsonBody, ctx) : undefined;
@@ -207,6 +206,7 @@ function runWorkflow(wf, input, env, depth = 0) {
 		runs[name] = (runs[name] || 0) + 1;
 		if (runs[name] > 1) throw new Error('simulate: ' + name + ' ran twice');
 		const outputs = runNode(node, node.executeOnce ? items.slice(0, 1) : items);
+		if (node.alwaysOutputData && outputs.every((o) => !o || !o.length)) outputs[0] = [{ json: {} }];
 		runData.set(name, outputs);
 		order.push(name);
 		const conns = (wf.connections[name] && wf.connections[name].main) || [];
@@ -216,7 +216,7 @@ function runWorkflow(wf, input, env, depth = 0) {
 		}
 	}
 	env.executions.push({ workflowId: wf.id, input, order });
-	return { items: runData.get(order[order.length - 1])[0] || [], order };
+	return { items: runData.get(order[order.length - 1])[0] || [], order, data: runData };
 }
 
 function simulate(wf, input, env = {}) {
