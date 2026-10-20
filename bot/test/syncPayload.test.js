@@ -144,3 +144,20 @@ describe('buildCommandList', () => {
 		expect(r.errors).toEqual(['too many global commands: at most 100, found 101']);
 	});
 });
+
+describe('buildCommandList guilds', () => {
+	const G = '1280482154249457685';
+	const list = [
+		wf('1', 'plain', { name: 'plain', description: 'P' }),
+		wf('2', 'b2b', { name: 'b2b', description: 'B', guilds: [G] }),
+		wf('3', 'client', { name: 'client', description: 'C', guilds: [G] }),
+	];
+	it('strips guilds from registered commands, keeps it in the table and reports restrictions', () => {
+		const r = buildCommandList(list);
+		expect(r.errors).toEqual([]);
+		expect(r.guildCommands.map((c) => c.name)).toEqual(['plain', 'b2b', 'client']);
+		r.guildCommands.forEach((c) => expect(c).not.toHaveProperty('guilds'));
+		expect(r.guildRestrictions).toEqual({ b2b: [G], client: [G] });
+		expect(JSON.parse(r.table[1].definition).guilds).toEqual([G]);
+	});
+});

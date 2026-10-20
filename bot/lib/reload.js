@@ -11,13 +11,24 @@ function reloadReply(report) {
 	if (typeof r.registered !== 'number') {
 		return { content: 'Sync returned no report. Check the Discord Sync execution log.' };
 	}
-	let content = 'Registered ' + count(r.registered, 'command') + '.';
+	const perGuild = (Array.isArray(r.guilds) ? r.guilds : []).filter(function (g) {
+		return g && typeof g === 'object' && typeof g.count === 'number';
+	});
+	const noun = typeof r.global === 'number' ? 'server command' : 'command';
+	const server =
+		'Registered ' +
+		(perGuild.length > 0
+			? perGuild
+					.map(function (g, i) {
+						return (i === 0 ? count(g.count, noun) : g.count) + ' on ' + g.guildId;
+					})
+					.join(', ')
+			: count(r.registered, noun));
+	let content = server + '.';
 	if (typeof r.global === 'number') {
 		content = r.globalSkipped
-			? 'Registered ' + count(r.registered, 'server command') + '; ' +
-				count(r.global, 'global command') + ' skipped (registerGlobal is off).'
-			: 'Registered ' + count(r.registered, 'server command') + ' and ' +
-				count(r.global, 'global command') + '.';
+			? server + '; ' + count(r.global, 'global command') + ' skipped (registerGlobal is off).'
+			: server + ' and ' + count(r.global, 'global command') + '.';
 	}
 	const skipped = Array.isArray(r.skipped) ? r.skipped : [];
 	if (skipped.length > 0) {

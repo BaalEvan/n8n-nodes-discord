@@ -101,3 +101,39 @@ describe('syncAbortMessage', () => {
 		expect(syncAbortMessage(['a: bad', 'b: worse'])).toBe('Sync aborted:\na: bad\nb: worse');
 	});
 });
+
+describe('guildTargets', () => {
+	const { buildCommandList } = loadModule('syncPayload', ['definition']);
+	const { guildTargets } = loadModule('syncApi', ['definition', 'syncPayload']);
+	const D = '181510887037861898';
+	const G = '1280482154249457685';
+	const node = (def) => [{ name: 'Command Definition', parameters: { jsonOutput: JSON.stringify(def) } }];
+	const wf = (id, def) => ({ id, name: 'w' + id, active: true, publishedNodes: node(def) });
+	const built = buildCommandList([
+		wf('1', { name: 'plain', description: 'P' }),
+		wf('2', { name: 'b2b', description: 'B', guilds: [G] }),
+		wf('3', { name: 'client', description: 'C', guilds: [G] }),
+	]);
+	const names = (t) => t.map((x) => ({ guildId: x.guildId, commands: x.commands.map((c) => c.name) }));
+	it('gives default guilds the plain commands and named guilds their own', () => {
+		expect(names(guildTargets(built, [D]))).toEqual([
+			{ guildId: D, commands: ['plain'] },
+			{ guildId: G, commands: ['b2b', 'client'] },
+		]);
+		expect(guildTargets(built, [D])[0].commands).toEqual([{ name: 'plain', description: 'P' }]);
+	});
+	it('gives a default guild that is also named both lists once', () => {
+		expect(names(guildTargets(built, [D, G]))).toEqual([
+			{ guildId: D, commands: ['plain'] },
+			{ guildId: G, commands: ['plain', 'b2b', 'client'] },
+		]);
+	});
+	it('works without restrictions', () => {
+		expect(names(guildTargets({ guildCommands: [{ name: 'a' }] }, ['x']))).toEqual([{ guildId: 'x', commands: ['a'] }]);
+	});
+	it('reports per-guild counts', () => {
+		const targets = guildTargets(built, [D]);
+		const report = syncReport(built, targets.map((t) => ({ guildId: t.guildId, count: t.commands.length })), true);
+		expect(report.guilds).toEqual([{ guildId: D, count: 1 }, { guildId: G, count: 2 }]);
+	});
+});

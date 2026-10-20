@@ -37,3 +37,25 @@ describe('reloadReply', () => {
 		);
 	});
 });
+
+describe('reloadReply per guild', () => {
+	it('shows the count for each server', () => {
+		expect(
+			reloadReply({
+				registered: 6,
+				global: 4,
+				globalSkipped: false,
+				skipped: [],
+				guilds: [{ guildId: '181510887037861898', count: 4 }, { guildId: '1280482154249457685', count: 3 }],
+			}).content,
+		).toBe('Registered 4 server commands on 181510887037861898, 3 on 1280482154249457685 and 4 global commands.');
+	});
+	it('handles one server, singular and skipped global', () => {
+		expect(
+			reloadReply({ registered: 1, global: 2, globalSkipped: true, skipped: [], guilds: [{ guildId: 'g', count: 1 }] }).content,
+		).toBe('Registered 1 server command on g; 2 global commands skipped (registerGlobal is off).');
+		expect(reloadReply({ registered: 2, skipped: [], guilds: [{ guildId: 'g', count: 2 }] }).content).toBe(
+			'Registered 2 commands on g.',
+		);
+	});
+});

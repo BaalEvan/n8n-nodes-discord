@@ -1,4 +1,4 @@
-const PRIVATE_KEYS = ['whitelist', 'ephemeral', 'modals', 'scope'];
+const PRIVATE_KEYS = ['whitelist', 'ephemeral', 'modals', 'scope', 'guilds'];
 
 function buildCommandList(workflows) {
 	const guildCommands = [];
@@ -8,6 +8,7 @@ function buildCommandList(workflows) {
 	const skipped = [];
 	const owners = {};
 	const scopes = {};
+	const guildRestrictions = {};
 	(workflows || []).forEach(function (wf) {
 		if (!wf.active) return;
 		let nodes = wf.publishedNodes;
@@ -55,6 +56,7 @@ function buildCommandList(workflows) {
 		PRIVATE_KEYS.forEach(function (key) {
 			delete command[key];
 		});
+		if (def.guilds) guildRestrictions[def.name] = def.guilds.slice();
 		(global ? globalCommands : guildCommands).push(command);
 		table.push({ name: def.name, workflowId: wf.id, definition: text });
 	});
@@ -67,6 +69,7 @@ function buildCommandList(workflows) {
 	return {
 		guildCommands: guildCommands,
 		globalCommands: globalCommands,
+		guildRestrictions: guildRestrictions,
 		table: table,
 		errors: errors,
 		skipped: skipped,

@@ -111,3 +111,21 @@ describe('parseDefinition scope', () => {
 		expect(parse({ whitelist: { everyone: 'yes' } }).errors).toContain('whitelist.everyone: must be a boolean');
 	});
 });
+
+describe('parseDefinition guilds', () => {
+	const parse = (extra) => parseDefinition(JSON.stringify({ name: 'x', description: 'X', ...extra }));
+	it('accepts snowflake ids on a server command', () => {
+		expect(parse({ guilds: ['1280482154249457685'] }).ok).toBe(true);
+		expect(parse({ scope: 'guild', guilds: ['1280482154249457685'] }).ok).toBe(true);
+	});
+	it('rejects guilds on a global command', () => {
+		const r = parse({ scope: 'global', guilds: ['1280482154249457685'] });
+		expect(r.ok).toBe(false);
+		expect(r.errors).toContain('guilds: only for "scope": "guild"');
+	});
+	it('rejects an empty array, non-arrays and non-snowflakes', () => {
+		for (const guilds of [[], 'x', ['abc'], [123], ['1280482154249457685', 'g1']]) {
+			expect(parse({ guilds }).ok, JSON.stringify(guilds)).toBe(false);
+		}
+	});
+});

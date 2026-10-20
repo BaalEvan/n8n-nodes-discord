@@ -33,6 +33,7 @@ function decideRoute(classified, row, ownerId) {
 	const parsed = parseDefinition(row.definition);
 	if (!parsed.ok) return unavailable;
 	const definition = parsed.definition;
+	if (definition.guilds && definition.guilds.indexOf(classified.guildId) === -1) return unavailable;
 	if (!isAllowed(definition, classified, ownerId)) {
 		return { route: classified.kind === 'autocomplete' ? 'refuseAutocomplete' : 'refuse', ephemeral: true };
 	}

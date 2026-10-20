@@ -50,13 +50,36 @@ function globalPlan(built, config, applicationId) {
 	};
 }
 
-function syncReport(built, guildIds, registerGlobal) {
+function guildTargets(built, defaultGuildIds) {
+	const restrictions = (built && built.guildRestrictions) || {};
+	const commands = (built && built.guildCommands) || [];
+	const ids = [];
+	(defaultGuildIds || []).forEach(function (id) {
+		if (ids.indexOf(id) === -1) ids.push(id);
+	});
+	Object.keys(restrictions).forEach(function (name) {
+		restrictions[name].forEach(function (id) {
+			if (ids.indexOf(id) === -1) ids.push(id);
+		});
+	});
+	return ids.map(function (guildId) {
+		const isDefault = (defaultGuildIds || []).indexOf(guildId) !== -1;
+		return {
+			guildId: guildId,
+			commands: commands.filter(function (c) {
+				return restrictions[c.name] ? restrictions[c.name].indexOf(guildId) !== -1 : isDefault;
+			}),
+		};
+	});
+}
+
+function syncReport(built, guilds, registerGlobal) {
 	return {
 		registered: built.guildCommands.length,
 		global: (built.globalCommands || []).length,
 		globalSkipped: registerGlobal !== true,
 		skipped: built.skipped,
-		guilds: guildIds,
+		guilds: guilds,
 	};
 }
 
@@ -64,4 +87,4 @@ function syncAbortMessage(errors) {
 	return 'Sync aborted:\n' + errors.join('\n');
 }
 
-if (typeof module !== 'undefined') module.exports = { toSyncWorkflows, parseGuildIds, configValues, globalPlan, syncReport, syncAbortMessage };
+if (typeof module !== 'undefined') module.exports = { toSyncWorkflows, parseGuildIds, configValues, globalPlan, guildTargets, syncReport, syncAbortMessage };

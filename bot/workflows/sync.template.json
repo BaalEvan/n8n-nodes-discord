@@ -254,7 +254,7 @@
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/syncApi.js\nconst built = $('Build').first().json;\nconst config = configValues($('Load Config').all());\nconst guildIds = parseGuildIds(config.guildIds);\nconst applicationId = String(($('Get Application').first().json || {}).id || '');\nif (!applicationId) throw new Error('Get Application returned no application id');\nreturn guildIds.map(function (guildId) {\n\treturn { json: { guildId: guildId, applicationId: applicationId, commands: built.guildCommands } };\n});"
+				"jsCode": "//@inline lib/syncApi.js\nconst built = $('Build').first().json;\nconst config = configValues($('Load Config').all());\nconst guildIds = parseGuildIds(config.guildIds);\nconst applicationId = String(($('Get Application').first().json || {}).id || '');\nif (!applicationId) throw new Error('Get Application returned no application id');\nreturn guildTargets(built, guildIds).map(function (target) {\n\treturn { json: { guildId: target.guildId, applicationId: applicationId, commands: target.commands } };\n});"
 			}
 		},
 		{
@@ -428,7 +428,7 @@
 			"parameters": {
 				"mode": "runOnceForAllItems",
 				"language": "javaScript",
-				"jsCode": "//@inline lib/syncApi.js\nconst built = $('Build').first().json;\nconst guilds = $('Guilds').all().map(function (i) {\n\treturn i.json.guildId;\n});\nconst registerGlobal = $('Global').first().json.registerGlobal === true;\nreturn [{ json: syncReport(built, guilds, registerGlobal) }];"
+				"jsCode": "//@inline lib/syncApi.js\nconst built = $('Build').first().json;\nconst guilds = $('Guilds').all().map(function (i) {\n\treturn { guildId: i.json.guildId, count: i.json.commands.length };\n});\nconst registerGlobal = $('Global').first().json.registerGlobal === true;\nreturn [{ json: syncReport(built, guilds, registerGlobal) }];"
 			}
 		}
 	],

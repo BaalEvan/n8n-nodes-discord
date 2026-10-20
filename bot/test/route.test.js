@@ -120,3 +120,22 @@ describe('decideRoute', () => {
 		expect(decideRoute({ ...dm, kind: 'autocomplete' }, closed, OWNER).route).toBe('refuseAutocomplete');
 	});
 });
+
+describe('decideRoute guilds', () => {
+	const G = '1280482154249457685';
+	const gRow = { workflowId: 'wf2', definition: JSON.stringify({ ...def, guilds: [G] }) };
+	it('serves the command in its guild', () => {
+		expect(decideRoute(cls({ guildId: G }), gRow, OWNER).route).toBe('deferCommand');
+	});
+	it('gives unknownCommand from another guild, even for the owner', () => {
+		expect(decideRoute(cls({ guildId: '181510887037861898' }), gRow, OWNER)).toMatchObject({ route: 'unknownCommand', ephemeral: true });
+		expect(decideRoute(cls({ guildId: '181510887037861898', userId: OWNER }), gRow, OWNER).route).toBe('unknownCommand');
+	});
+	it('gives unknownCommand from a DM, even for the owner', () => {
+		expect(decideRoute(cls({ guildId: null }), gRow, OWNER).route).toBe('unknownCommand');
+		expect(decideRoute(cls({ guildId: null, userId: OWNER }), gRow, OWNER).route).toBe('unknownCommand');
+	});
+	it('refuses autocomplete outside the guild', () => {
+		expect(decideRoute(cls({ kind: 'autocomplete', guildId: null }), gRow, OWNER).route).toBe('refuseAutocomplete');
+	});
+});

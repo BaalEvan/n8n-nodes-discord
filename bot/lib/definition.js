@@ -64,6 +64,18 @@ function checkScope(def, errors) {
 		return;
 	}
 	const global = def.scope === 'global';
+	if (def.guilds !== undefined) {
+		if (global) errors.push('guilds: only for "scope": "guild"');
+		else if (
+			!Array.isArray(def.guilds) ||
+			def.guilds.length === 0 ||
+			def.guilds.some(function (id) {
+				return typeof id !== 'string' || !/^\d{17,20}$/.test(id);
+			})
+		) {
+			errors.push('guilds: must be a non-empty array of server IDs');
+		}
+	}
 	Object.keys(GLOBAL_DEFAULTS).forEach(function (key) {
 		if (def[key] === undefined) return;
 		if (!global) errors.push(key + ': only for "scope": "global"');

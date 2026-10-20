@@ -1016,11 +1016,46 @@ describe('sync', () => {
 					global: 1,
 					globalSkipped: false,
 					skipped: ['Discord Command: draft: no published version'],
-					guilds: ['g1', 'g2'],
+					guilds: [
+						{ guildId: 'g1', count: 1 },
+						{ guildId: 'g2', count: 1 },
+					],
 				},
 			},
 		]);
 		expect(report(undefined)[0].json).toMatchObject({ registered: 1, global: 1, globalSkipped: true });
+	});
+
+	it('Guilds returns one item per target guild, with restricted commands only on their guilds', () => {
+		const G = '1280482154249457685';
+		const nodeFor = (def) => ({ name: 'Command Definition', parameters: { jsonOutput: JSON.stringify(def) } });
+		const wfItem = (id, def) => ({ json: { id, name: 'Discord Command: ' + def.name, active: true, activeVersion: { nodes: [nodeFor(def)] } } });
+		const builtOut = runCode(wf, 'Build', {
+			input: [
+				wfItem('w1', { name: 'ping', description: 'P' }),
+				wfItem('w2', { name: 'invoice-b2b', description: 'B', guilds: [G] }),
+			],
+		});
+		const guilds = runCode(wf, 'Guilds', {
+			nodes: {
+				Build: builtOut,
+				'Load Config': [{ json: { key: 'guildIds', value: '["g1"]' } }],
+				'Get Application': [{ json: { id: 'app1' } }],
+			},
+			input: [{ json: { id: 'app1' } }],
+		});
+		expect(guilds.map((g) => [g.json.guildId, g.json.applicationId, g.json.commands.map((c) => c.name)])).toEqual([
+			['g1', 'app1', ['ping']],
+			[G, 'app1', ['invoice-b2b']],
+		]);
+		const report = runCode(wf, 'Report', {
+			nodes: { Build: builtOut, Guilds: guilds, Global: [{ json: { registerGlobal: false } }] },
+			input: [{ json: {} }],
+		});
+		expect(report[0].json.guilds).toEqual([
+			{ guildId: 'g1', count: 1 },
+			{ guildId: G, count: 1 },
+		]);
 	});
 
 	it('Build reports invalid definitions in the abort message', () => {
