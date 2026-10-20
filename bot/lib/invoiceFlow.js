@@ -199,6 +199,19 @@ function flowLastStep(pairs) {
 	return step;
 }
 
+function flowUploaded(plan, step) {
+	var files = (plan && plan.files) || [];
+	var option = text(step).split(': ')[0];
+	var at = files
+		.map(function (f) {
+			return f.option;
+		})
+		.indexOf(option);
+	return files.slice(0, Math.max(at, 0)).map(function (f) {
+		return f.fileName;
+	});
+}
+
 function flowWithCode(message, code) {
 	return code ? message + ' (HTTP ' + code + ')' : message;
 }
@@ -227,7 +240,7 @@ function flowFailure(plan, step, item, uploaded) {
 	var p = plan || {};
 	var info;
 	if (step) {
-		var e = flowRequestError(item, step !== 'download');
+		var e = flowRequestError(item, step.split(': ').pop() !== 'download');
 		info = { step: step, reason: e.reason, auth: e.auth };
 	} else {
 		var f = folderFailure('folder', item).error;
@@ -340,6 +353,7 @@ if (typeof module !== 'undefined')
 		flowQuoted,
 		flowPlan,
 		flowLastStep,
+		flowUploaded,
 		flowFailure,
 		flowFileLinks,
 		flowSuccess,

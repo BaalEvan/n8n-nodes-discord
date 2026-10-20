@@ -1,0 +1,1160 @@
+{
+	"name": "Discord Command: invoice-zlecenie",
+	"nodes": [
+		{
+			"id": "9bab5837-802b-5c29-89f0-e44b336c757d",
+			"name": "When called by another workflow",
+			"type": "n8n-nodes-base.executeWorkflowTrigger",
+			"typeVersion": 1.3,
+			"position": [
+				0,
+				300
+			],
+			"parameters": {
+				"inputSource": "passthrough"
+			}
+		},
+		{
+			"id": "1b22e8ff-b067-5c8f-8810-f7ce0a3f543b",
+			"name": "Command Definition",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				220,
+				300
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "{\n  \"name\": \"invoice-zlecenie\",\n  \"description\": \"Upload your signed timesheet and bill\",\n  \"guilds\": [\n    \"1280482154249457685\"\n  ],\n  \"ephemeral\": true,\n  \"whitelist\": {\n    \"users\": [],\n    \"roles\": [\n      \"1471572659438358713\"\n    ]\n  },\n  \"options\": [\n    {\n      \"type\": 11,\n      \"name\": \"timesheet\",\n      \"description\": \"Signed timesheet (PDF)\",\n      \"required\": true\n    },\n    {\n      \"type\": 11,\n      \"name\": \"bill\",\n      \"description\": \"Signed bill (PDF)\",\n      \"required\": true\n    },\n    {\n      \"type\": 3,\n      \"name\": \"month_date\",\n      \"description\": \"Date on the bill (YYYY-MM-DD)\",\n      \"required\": true,\n      \"autocomplete\": true\n    }\n  ]\n}",
+				"options": {}
+			}
+		},
+		{
+			"id": "d8fa2f29-3269-539d-8632-369b14273348",
+			"name": "Switch on mode",
+			"type": "n8n-nodes-base.switch",
+			"typeVersion": 3.4,
+			"position": [
+				440,
+				300
+			],
+			"parameters": {
+				"mode": "rules",
+				"rules": {
+					"values": [
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "f1830081-5086-53ca-8f66-0bbd2395d293",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "command",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "command"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "258ac96a-7d9b-5cf4-8b15-a3a4760a4985",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "autocomplete",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "autocomplete"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "0dfa2d18-5c1f-52ec-84bd-1c002a6d8f94",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "component",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "component"
+						},
+						{
+							"conditions": {
+								"options": {
+									"caseSensitive": true,
+									"leftValue": "",
+									"typeValidation": "strict",
+									"version": 3
+								},
+								"conditions": [
+									{
+										"id": "923a27c1-6984-5a28-8a32-f86e8cf37bb0",
+										"leftValue": "={{ $('When called by another workflow').first().json.mode }}",
+										"rightValue": "modal",
+										"operator": {
+											"type": "string",
+											"operation": "equals"
+										}
+									}
+								],
+								"combinator": "and"
+							},
+							"renameOutput": true,
+							"outputKey": "modal"
+						}
+					]
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "9d965bbc-1a5b-56e7-8ebc-d78c62d312a5",
+			"name": "Suggest Dates",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				660,
+				600
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nreturn [{ json: flowChoices('zlecenie', $('When called by another workflow').first().json.interaction, Date.now()) }];"
+			}
+		},
+		{
+			"id": "a92c14fd-a552-5af1-8089-2f0dba1ba366",
+			"name": "Validate",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				660,
+				200
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nreturn [{ json: flowInput('zlecenie', $('When called by another workflow').first().json.interaction) }];"
+			}
+		},
+		{
+			"id": "c9f1fe67-bb7d-5268-81f7-4e806e2d9e32",
+			"name": "Valid?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				880,
+				200
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "63149587-184a-5383-861d-c57bc90078bf",
+							"leftValue": "={{ $json.ok === true }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "5b549ae3-ee67-5b6b-87aa-ad988ecfe491",
+			"name": "Reply Invalid",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				1100,
+				400
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify({ content: $json.content }) }}",
+				"options": {}
+			}
+		},
+		{
+			"id": "7aac125f-6455-5510-80ff-8c42c6dc9816",
+			"name": "Load Employees",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				1100,
+				100
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "Employee"
+				},
+				"returnAll": true
+			},
+			"alwaysOutputData": true,
+			"executeOnce": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "28c83625-9636-50b1-8ae9-6d783060470f",
+			"name": "Load Config",
+			"type": "n8n-nodes-base.dataTable",
+			"typeVersion": 1.1,
+			"position": [
+				1320,
+				100
+			],
+			"parameters": {
+				"resource": "row",
+				"operation": "get",
+				"dataTableId": {
+					"__rl": true,
+					"mode": "name",
+					"value": "discord_config"
+				},
+				"matchType": "anyCondition",
+				"filters": {
+					"conditions": [
+						{
+							"keyName": "key",
+							"condition": "eq",
+							"keyValue": "invoiceDriveRootId"
+						},
+						{
+							"keyName": "key",
+							"condition": "eq",
+							"keyValue": "invoiceNotifyChannelId"
+						},
+						{
+							"keyName": "key",
+							"condition": "eq",
+							"keyValue": "driveFolderHelperWorkflowId"
+						}
+					]
+				},
+				"returnAll": true
+			},
+			"alwaysOutputData": true,
+			"executeOnce": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "e7dc3933-066e-5004-8f7f-57a2f03b4f67",
+			"name": "Plan",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				1540,
+				100
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nconst employees = $('Load Employees').all().map((i) => i.json);\nconst config = $('Load Config').all().map((i) => i.json);\nreturn [{ json: flowPlan('zlecenie', $('Validate').first().json, employees, config) }];"
+			}
+		},
+		{
+			"id": "473aa523-a02a-540a-8c70-afbe07093fe4",
+			"name": "Go?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				1760,
+				100
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "12682e8f-4884-5246-88c7-526015027e67",
+							"leftValue": "={{ $json.action === 'upload' }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "be06c26f-1897-547d-898d-403ebb45e185",
+			"name": "Find Folder",
+			"type": "n8n-nodes-base.executeWorkflow",
+			"typeVersion": 1.4,
+			"position": [
+				1980,
+				0
+			],
+			"parameters": {
+				"source": "database",
+				"workflowId": {
+					"__rl": true,
+					"mode": "id",
+					"value": "={{ $('Plan').first().json.helperId }}"
+				},
+				"workflowInputs": {
+					"mappingMode": "defineBelow",
+					"value": {
+						"rootId": "={{ $('Plan').first().json.rootId }}",
+						"year": "={{ $('Plan').first().json.year }}",
+						"month": "={{ $('Plan').first().json.month }}",
+						"personFolderName": "={{ $('Plan').first().json.personFolder }}"
+					},
+					"matchingColumns": [],
+					"schema": [
+						{
+							"id": "rootId",
+							"displayName": "rootId",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						},
+						{
+							"id": "year",
+							"displayName": "year",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "number"
+						},
+						{
+							"id": "month",
+							"displayName": "month",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "number"
+						},
+						{
+							"id": "personFolderName",
+							"displayName": "personFolderName",
+							"required": false,
+							"defaultMatch": false,
+							"display": true,
+							"canBeUsedToMatch": true,
+							"type": "string"
+						}
+					],
+					"attemptToConvertTypes": false,
+					"convertFieldsToString": true
+				},
+				"mode": "once",
+				"options": {
+					"waitForSubWorkflow": true
+				}
+			},
+			"alwaysOutputData": true,
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "7e4a068e-016a-5094-8c96-8c0d10900cea",
+			"name": "Folder OK?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				2200,
+				0
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "60283b79-b206-53e5-8328-52c7fe77da0d",
+							"leftValue": "={{ $json.folderId || '' }}",
+							"rightValue": "",
+							"operator": {
+								"type": "string",
+								"operation": "notEmpty",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "a4c61f18-0616-5db2-8f9b-db5aac9dbff7",
+			"name": "Check Timesheet",
+			"type": "n8n-nodes-base.httpRequest",
+			"typeVersion": 4.2,
+			"position": [
+				2420,
+				-100
+			],
+			"parameters": {
+				"method": "GET",
+				"url": "https://www.googleapis.com/drive/v3/files",
+				"authentication": "predefinedCredentialType",
+				"nodeCredentialType": "googleDriveOAuth2Api",
+				"sendQuery": true,
+				"specifyQuery": "keypair",
+				"queryParameters": {
+					"parameters": [
+						{
+							"name": "q",
+							"value": "='{{ $('Find Folder').first().json.folderId }}' in parents and name='{{ $('Plan').first().json.files[0].quotedName }}' and trashed=false"
+						},
+						{
+							"name": "supportsAllDrives",
+							"value": "true"
+						},
+						{
+							"name": "includeItemsFromAllDrives",
+							"value": "true"
+						},
+						{
+							"name": "fields",
+							"value": "files(id)"
+						}
+					]
+				},
+				"options": {}
+			},
+			"credentials": {
+				"googleDriveOAuth2Api": {
+					"name": "Google Drive account"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "789754b5-f8ef-53f8-8c6b-4bb9d7742687",
+			"name": "Download Timesheet",
+			"type": "n8n-nodes-base.httpRequest",
+			"typeVersion": 4.2,
+			"position": [
+				2640,
+				-100
+			],
+			"parameters": {
+				"method": "GET",
+				"url": "={{ $('Plan').first().json.files[0].url }}",
+				"authentication": "none",
+				"options": {
+					"response": {
+						"response": {
+							"responseFormat": "file",
+							"outputPropertyName": "timesheet"
+						}
+					}
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "3310945f-70c1-5901-8954-78b6798694ef",
+			"name": "Upload Timesheet",
+			"type": "n8n-nodes-base.googleDrive",
+			"typeVersion": 3,
+			"position": [
+				2860,
+				-100
+			],
+			"parameters": {
+				"inputDataFieldName": "timesheet",
+				"name": "={{ $('Plan').first().json.files[0].fileName }}",
+				"driveId": {
+					"__rl": true,
+					"mode": "list",
+					"value": "My Drive"
+				},
+				"folderId": {
+					"__rl": true,
+					"value": "={{ $('Find Folder').first().json.folderId }}",
+					"mode": "id"
+				},
+				"options": {}
+			},
+			"credentials": {
+				"googleDriveOAuth2Api": {
+					"name": "Google Drive account"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "172db945-ae3b-52da-8377-525c0c2d1757",
+			"name": "Check Bill",
+			"type": "n8n-nodes-base.httpRequest",
+			"typeVersion": 4.2,
+			"position": [
+				3080,
+				-100
+			],
+			"parameters": {
+				"method": "GET",
+				"url": "https://www.googleapis.com/drive/v3/files",
+				"authentication": "predefinedCredentialType",
+				"nodeCredentialType": "googleDriveOAuth2Api",
+				"sendQuery": true,
+				"specifyQuery": "keypair",
+				"queryParameters": {
+					"parameters": [
+						{
+							"name": "q",
+							"value": "='{{ $('Find Folder').first().json.folderId }}' in parents and name='{{ $('Plan').first().json.files[1].quotedName }}' and trashed=false"
+						},
+						{
+							"name": "supportsAllDrives",
+							"value": "true"
+						},
+						{
+							"name": "includeItemsFromAllDrives",
+							"value": "true"
+						},
+						{
+							"name": "fields",
+							"value": "files(id)"
+						}
+					]
+				},
+				"options": {}
+			},
+			"credentials": {
+				"googleDriveOAuth2Api": {
+					"name": "Google Drive account"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "30475fbd-8007-59a9-82e3-f6da33d98e98",
+			"name": "Download Bill",
+			"type": "n8n-nodes-base.httpRequest",
+			"typeVersion": 4.2,
+			"position": [
+				3300,
+				-100
+			],
+			"parameters": {
+				"method": "GET",
+				"url": "={{ $('Plan').first().json.files[1].url }}",
+				"authentication": "none",
+				"options": {
+					"response": {
+						"response": {
+							"responseFormat": "file",
+							"outputPropertyName": "bill"
+						}
+					}
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "ec29c744-3ad6-5e01-8293-1c00c5d41f57",
+			"name": "Upload Bill",
+			"type": "n8n-nodes-base.googleDrive",
+			"typeVersion": 3,
+			"position": [
+				3520,
+				-100
+			],
+			"parameters": {
+				"inputDataFieldName": "bill",
+				"name": "={{ $('Plan').first().json.files[1].fileName }}",
+				"driveId": {
+					"__rl": true,
+					"mode": "list",
+					"value": "My Drive"
+				},
+				"folderId": {
+					"__rl": true,
+					"value": "={{ $('Find Folder').first().json.folderId }}",
+					"mode": "id"
+				},
+				"options": {}
+			},
+			"credentials": {
+				"googleDriveOAuth2Api": {
+					"name": "Google Drive account"
+				}
+			},
+			"onError": "continueErrorOutput"
+		},
+		{
+			"id": "45be4ce0-0fda-5f95-8eaf-3df93129e4e4",
+			"name": "Done",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				3740,
+				-100
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nconst plan = $('Plan').first().json;\nconst folder = $('Find Folder').first().json;\nconst uploads = [$('Upload Timesheet').first().json, $('Upload Bill').first().json];\nconst existing = [$('Check Timesheet').first().json, $('Check Bill').first().json];\nreturn [{ json: flowSuccess(plan, folder, uploads, existing) }];"
+			}
+		},
+		{
+			"id": "fe64d07d-8338-55a9-8d91-74d67529fafb",
+			"name": "Post Notice",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				3960,
+				-100
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "message",
+				"operation": "send",
+				"channelId": "={{ $json.channelId }}",
+				"content": "={{ $json.notice }}",
+				"allowedMentions": {
+					"values": {
+						"parse": [],
+						"roles": "",
+						"users": "",
+						"repliedUser": true
+					}
+				}
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "fb706c0d-aee1-5108-8274-e1e2d954fa66",
+			"name": "Reply Success",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				4180,
+				-100
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify({ content: $('Done').first().json.content }) }}",
+				"options": {}
+			}
+		},
+		{
+			"id": "ef5ad9f0-5988-5248-8c28-7f77e9adc45a",
+			"name": "Failure",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				3740,
+				200
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js\nconst plan = $('Plan').first().json;\nconst step = flowLastStep([\n\t['timesheet: duplicate check', $('Check Timesheet').isExecuted],\n\t['timesheet: download', $('Download Timesheet').isExecuted],\n\t['timesheet: upload', $('Upload Timesheet').isExecuted],\n\t['bill: duplicate check', $('Check Bill').isExecuted],\n\t['bill: download', $('Download Bill').isExecuted],\n\t['bill: upload', $('Upload Bill').isExecuted],\n]);\nreturn [{ json: flowFailure(plan, step, $input.first().json, flowUploaded(plan, step)) }];"
+			}
+		},
+		{
+			"id": "292629c6-040f-599a-8b0b-deb152bac164",
+			"name": "Stop",
+			"type": "n8n-nodes-base.code",
+			"typeVersion": 2,
+			"position": [
+				3960,
+				300
+			],
+			"parameters": {
+				"mode": "runOnceForAllItems",
+				"language": "javaScript",
+				"jsCode": "return $input.all();"
+			}
+		},
+		{
+			"id": "db999337-5038-502b-8e16-7a95f9fd08e3",
+			"name": "Notify?",
+			"type": "n8n-nodes-base.if",
+			"typeVersion": 2.3,
+			"position": [
+				4180,
+				300
+			],
+			"parameters": {
+				"conditions": {
+					"options": {
+						"caseSensitive": true,
+						"leftValue": "",
+						"typeValidation": "strict",
+						"version": 3
+					},
+					"conditions": [
+						{
+							"id": "1ebe5d0e-3e47-50f1-8699-fecb9a9b2a53",
+							"leftValue": "={{ Boolean($json.note && $json.channelId) }}",
+							"rightValue": "",
+							"operator": {
+								"type": "boolean",
+								"operation": "true",
+								"singleValue": true
+							}
+						}
+					],
+					"combinator": "and"
+				},
+				"options": {}
+			}
+		},
+		{
+			"id": "7a0bee39-c774-52ed-8278-5e4184d07ae2",
+			"name": "Post Note",
+			"type": "CUSTOM.discord",
+			"typeVersion": 1,
+			"position": [
+				4400,
+				200
+			],
+			"parameters": {
+				"authentication": "bot",
+				"resource": "message",
+				"operation": "send",
+				"channelId": "={{ $json.channelId }}",
+				"content": "={{ $json.note }}",
+				"allowedMentions": {
+					"values": {
+						"parse": [],
+						"roles": "",
+						"users": "",
+						"repliedUser": true
+					}
+				}
+			},
+			"credentials": {
+				"discordGatewayBotApi": {
+					"name": "Discord Bot (live)"
+				}
+			},
+			"onError": "continueRegularOutput"
+		},
+		{
+			"id": "fd661150-b4fe-547f-8544-1abfc02c0c01",
+			"name": "Reply",
+			"type": "n8n-nodes-base.set",
+			"typeVersion": 3.5,
+			"position": [
+				4620,
+				300
+			],
+			"parameters": {
+				"mode": "raw",
+				"jsonOutput": "={{ JSON.stringify({ content: $('Stop').first().json.content }) }}",
+				"options": {}
+			}
+		}
+	],
+	"connections": {
+		"When called by another workflow": {
+			"main": [
+				[
+					{
+						"node": "Command Definition",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Command Definition": {
+			"main": [
+				[
+					{
+						"node": "Switch on mode",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Switch on mode": {
+			"main": [
+				[
+					{
+						"node": "Validate",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Suggest Dates",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Validate": {
+			"main": [
+				[
+					{
+						"node": "Valid?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Valid?": {
+			"main": [
+				[
+					{
+						"node": "Load Employees",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply Invalid",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Load Employees": {
+			"main": [
+				[
+					{
+						"node": "Load Config",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Load Config": {
+			"main": [
+				[
+					{
+						"node": "Plan",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Plan": {
+			"main": [
+				[
+					{
+						"node": "Go?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Go?": {
+			"main": [
+				[
+					{
+						"node": "Find Folder",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Stop",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Find Folder": {
+			"main": [
+				[
+					{
+						"node": "Folder OK?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Folder OK?": {
+			"main": [
+				[
+					{
+						"node": "Check Timesheet",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Failure",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Check Timesheet": {
+			"main": [
+				[
+					{
+						"node": "Download Timesheet",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Failure",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Download Timesheet": {
+			"main": [
+				[
+					{
+						"node": "Upload Timesheet",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Failure",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Upload Timesheet": {
+			"main": [
+				[
+					{
+						"node": "Check Bill",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Failure",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Check Bill": {
+			"main": [
+				[
+					{
+						"node": "Download Bill",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Failure",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Download Bill": {
+			"main": [
+				[
+					{
+						"node": "Upload Bill",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Failure",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Upload Bill": {
+			"main": [
+				[
+					{
+						"node": "Done",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Failure",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Done": {
+			"main": [
+				[
+					{
+						"node": "Post Notice",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Post Notice": {
+			"main": [
+				[
+					{
+						"node": "Reply Success",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Failure": {
+			"main": [
+				[
+					{
+						"node": "Stop",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Stop": {
+			"main": [
+				[
+					{
+						"node": "Notify?",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Notify?": {
+			"main": [
+				[
+					{
+						"node": "Post Note",
+						"type": "main",
+						"index": 0
+					}
+				],
+				[
+					{
+						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		},
+		"Post Note": {
+			"main": [
+				[
+					{
+						"node": "Reply",
+						"type": "main",
+						"index": 0
+					}
+				]
+			]
+		}
+	},
+	"settings": {
+		"executionOrder": "v1"
+	},
+	"tags": [
+		{
+			"name": "discord-command"
+		}
+	]
+}

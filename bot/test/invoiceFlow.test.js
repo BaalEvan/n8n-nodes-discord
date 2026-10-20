@@ -11,6 +11,7 @@ const {
 	flowPlan,
 	flowQuoted,
 	flowLastStep,
+	flowUploaded,
 	flowFailure,
 	flowFileLinks,
 	flowSuccess,
@@ -406,6 +407,30 @@ describe('flowLastStep', () => {
 	});
 });
 
+describe('flowUploaded', () => {
+	const z = flowInput('zlecenie', {
+		userId: USER,
+		options: { timesheet: '1', bill: '2', month_date: '2026-08-31' },
+		resolved: { attachments: { 1: PDF, 2: PDF } },
+	});
+	const plan = flowPlan('zlecenie', z, [{ ...ROW, contract: 'ZLECENIE' }], CONFIG);
+	it('names the files of the steps before the failed one', () => {
+		expect(flowUploaded(plan, 'bill: upload')).toEqual([
+			'ZLECENIE-2026-08-31-Jan-Kowalski-TIMESHEET.pdf',
+		]);
+		expect(flowUploaded(plan, 'bill: duplicate check')).toEqual([
+			'ZLECENIE-2026-08-31-Jan-Kowalski-TIMESHEET.pdf',
+		]);
+		expect(flowUploaded(plan, 'timesheet: upload')).toEqual([]);
+	});
+	it('is empty for a single-file step, the folder, or no step', () => {
+		expect(flowUploaded(flowPlan('b2b', b2bInput(), [ROW], CONFIG), 'upload')).toEqual([]);
+		expect(flowUploaded(plan, 'year: list')).toEqual([]);
+		expect(flowUploaded(plan, '')).toEqual([]);
+		expect(flowUploaded(undefined, 'bill: upload')).toEqual([]);
+	});
+});
+
 describe('flowFailure', () => {
 	const plan = flowPlan('b2b', b2bInput(), [ROW], CONFIG);
 	const stop = (step, reason, auth) => ({
@@ -515,6 +540,14 @@ describe('flowFailure', () => {
 		expect(
 			flowFailure(plan, 'download', { error: 'Forbidden - perhaps check your credentials?' }),
 		).toEqual(stop('download', 'Forbidden - perhaps check your credentials? (HTTP 403)', false));
+	});
+	it('never calls a per-file download error a Drive login problem', () => {
+		expect(flowFailure(plan, 'bill: download', { error: 'invalid_grant' }).note).toBe(
+			failureNote('invoice-b2b', USER, 'bill: download', 'invalid_grant', false),
+		);
+		expect(flowFailure(plan, 'bill: upload', { error: 'invalid_grant' }).note).toBe(
+			failureNote('invoice-b2b', USER, 'bill: upload', 'invalid_grant', true),
+		);
 	});
 	it('names the files already uploaded', () => {
 		expect(flowFailure(plan, 'upload', { error: 'Boom' }, ['a.pdf', 'b.pdf'])).toEqual(

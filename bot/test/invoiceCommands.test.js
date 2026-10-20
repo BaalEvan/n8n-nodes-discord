@@ -758,3 +758,492 @@ describe('/invoice-b2b', () => {
 		});
 	});
 });
+
+describe('/invoice-zlecenie', () => {
+	const wf = built['commands/invoice-zlecenie'];
+	const ZROW = {
+		discordID: USER,
+		fullname: 'Anna Nowak',
+		shortname: 'Ania',
+		b2bentity: '',
+		contract: 'ZLECENIE',
+		email: 'anna@example.com',
+	};
+	const TS_FILE = 'ZLECENIE-2026-08-31-Anna-Nowak-TIMESHEET.pdf';
+	const BILL_FILE = 'ZLECENIE-2026-08-31-Anna-Nowak-Bill.pdf';
+	const ZPERSON = 'ZLECENIE - Anna Nowak';
+	const ZFOLDER = {
+		folderId: 'FOLDER2',
+		path: '2026/08 - Sierpień/' + ZPERSON,
+		created: [],
+		renamed: [],
+	};
+	const TS_URL = 'https://cdn.discordapp.com/attachments/1/3/godziny.pdf?ex=1';
+	const BILL_URL = 'https://cdn.discordapp.com/attachments/1/4/rachunek.pdf?ex=1';
+	const TS_BYTES = { data: 'VFM=', mimeType: 'application/pdf', fileName: 'godziny.pdf' };
+	const BILL_BYTES = { data: 'QklMTA==', mimeType: 'application/pdf', fileName: 'rachunek.pdf' };
+	const zInteraction = (options = {}, timesheet = {}, bill = {}) => ({
+		kind: 'command',
+		commandName: 'invoice-zlecenie',
+		userId: USER,
+		guildId: '1280482154249457685',
+		options: { timesheet: '901', bill: '902', month_date: '2026-08-31', ...options },
+		resolved: {
+			attachments: {
+				901: { ...PDF, url: TS_URL, filename: 'godziny.pdf', ...timesheet },
+				902: { ...PDF, url: BILL_URL, filename: 'rachunek.pdf', ...bill },
+			},
+		},
+	});
+	const zHttp = (req) => {
+		if (req.node === 'Check Timesheet' || req.node === 'Check Bill') return { json: { files: [] } };
+		if (req.node === 'Download Timesheet') return { binary: TS_BYTES };
+		if (req.node === 'Download Bill') return { binary: BILL_BYTES };
+		throw new Error('unexpected http ' + req.node);
+	};
+	const zDrive = (req) => {
+		const id = req.node === 'Upload Timesheet' ? 'TS1' : 'BILL1';
+		return {
+			json: {
+				id,
+				name: req.name,
+				webViewLink: 'https://view/' + id,
+				webContentLink: 'https://get/' + id,
+			},
+		};
+	};
+	const runZ = (opts = {}) =>
+		run(wf, {
+			input: zInteraction(),
+			employees: [ZROW],
+			folder: ZFOLDER,
+			http: zHttp,
+			drive: zDrive,
+			...opts,
+		});
+	const NOTICE =
+		'Cześć Dziadu, ten kurwipołeć **Ania** Podpisał rachunek i godzinki za `sierpień` `2026`\n -> [Zobacz Godziny](https://view/TS1)\n -> [Zobacz Rachunek](https://view/BILL1)';
+	const failed = (r, step, reason, auth) => {
+		expect(r.reply).toEqual({ content: replies.FAILED });
+		expect(r.messages).toEqual([
+			{ channelId: CHANNEL, content: failureNote('invoice-zlecenie', USER, step, reason, auth) },
+		]);
+	};
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	describe('definition and structure', () => {
+		it('is a tagged discord-command with the exact definition', () => {
+			expect(wf.name).toBe('Discord Command: invoice-zlecenie');
+			expect(wf.tags.map((t) => t.name)).toEqual(['discord-command']);
+			const parsed = parseDefinition(node(wf, 'Command Definition').parameters.jsonOutput);
+			expect(parsed.ok).toBe(true);
+			expect(parsed.definition).toEqual({
+				name: 'invoice-zlecenie',
+				description: 'Upload your signed timesheet and bill',
+				guilds: ['1280482154249457685'],
+				ephemeral: true,
+				whitelist: { users: [], roles: ['1471572659438358713'] },
+				options: [
+					{ type: 11, name: 'timesheet', description: 'Signed timesheet (PDF)', required: true },
+					{ type: 11, name: 'bill', description: 'Signed bill (PDF)', required: true },
+					{
+						type: 3,
+						name: 'month_date',
+						description: 'Date on the bill (YYYY-MM-DD)',
+						required: true,
+						autocomplete: true,
+					},
+				],
+			});
+		});
+
+		it('runs the timesheet chain, then the bill chain, into one folder', () => {
+			expect(targets(wf, 'Switch on mode', 0)).toEqual(['Validate']);
+			expect(targets(wf, 'Switch on mode', 1)).toEqual(['Suggest Dates']);
+			expect(targets(wf, 'Valid?', 0)).toEqual(['Load Employees']);
+			expect(targets(wf, 'Valid?', 1)).toEqual(['Reply Invalid']);
+			expect(targets(wf, 'Go?', 0)).toEqual(['Find Folder']);
+			expect(targets(wf, 'Go?', 1)).toEqual(['Stop']);
+			expect(targets(wf, 'Find Folder')).toEqual(['Folder OK?']);
+			expect(targets(wf, 'Folder OK?', 0)).toEqual(['Check Timesheet']);
+			expect(targets(wf, 'Folder OK?', 1)).toEqual(['Failure']);
+			expect(targets(wf, 'Check Timesheet', 0)).toEqual(['Download Timesheet']);
+			expect(targets(wf, 'Download Timesheet', 0)).toEqual(['Upload Timesheet']);
+			expect(targets(wf, 'Upload Timesheet', 0)).toEqual(['Check Bill']);
+			expect(targets(wf, 'Check Bill', 0)).toEqual(['Download Bill']);
+			expect(targets(wf, 'Download Bill', 0)).toEqual(['Upload Bill']);
+			expect(targets(wf, 'Upload Bill', 0)).toEqual(['Done']);
+			expect(targets(wf, 'Done')).toEqual(['Post Notice']);
+			expect(targets(wf, 'Post Notice')).toEqual(['Reply Success']);
+			expect(targets(wf, 'Failure')).toEqual(['Stop']);
+			expect(targets(wf, 'Stop')).toEqual(['Notify?']);
+			expect(targets(wf, 'Notify?', 0)).toEqual(['Post Note']);
+			expect(targets(wf, 'Notify?', 1)).toEqual(['Reply']);
+			expect(targets(wf, 'Post Note')).toEqual(['Reply']);
+			expect([...reachable(wf, 'Reply Invalid')]).toEqual([]);
+		});
+
+		it('sends every Drive and HTTP error output to the one failure branch', () => {
+			const io = wf.nodes.filter(
+				(n) => n.type === 'n8n-nodes-base.httpRequest' || n.type === 'n8n-nodes-base.googleDrive',
+			);
+			expect(io.map((n) => n.name).sort()).toEqual(
+				[
+					'Check Timesheet',
+					'Download Timesheet',
+					'Upload Timesheet',
+					'Check Bill',
+					'Download Bill',
+					'Upload Bill',
+				].sort(),
+			);
+			for (const n of io) {
+				expect(n.onError, n.name).toBe('continueErrorOutput');
+				expect(targets(wf, n.name, 1), n.name).toEqual(['Failure']);
+			}
+			const posts = wf.nodes.filter((n) => n.type === 'CUSTOM.discord');
+			expect(posts.map((n) => n.name).sort()).toEqual(['Post Note', 'Post Notice']);
+			for (const n of posts) {
+				expect(n.onError, n.name).toBe('continueRegularOutput');
+				expect(n.credentials).toEqual({ discordGatewayBotApi: { name: 'Discord Bot (live)' } });
+				expect(n.parameters.allowedMentions.values.parse).toEqual([]);
+			}
+			expect(node(wf, 'Find Folder').onError).toBe('continueRegularOutput');
+			expect(node(wf, 'Find Folder').alwaysOutputData).toBe(true);
+		});
+
+		it('shares the b2b lookups and folder call', () => {
+			const b2b = built['commands/invoice-b2b'];
+			for (const name of ['Load Employees', 'Load Config', 'Find Folder']) {
+				expect(node(wf, name).parameters, name).toEqual(node(b2b, name).parameters);
+				expect(node(wf, name).executeOnce, name).toBe(node(b2b, name).executeOnce);
+			}
+		});
+
+		it('checks, downloads and uploads each file by its own index and binary', () => {
+			const files = [
+				['Timesheet', 0, 'timesheet'],
+				['Bill', 1, 'bill'],
+			];
+			for (const [label, i, option] of files) {
+				const check = node(wf, 'Check ' + label);
+				expect(check.parameters.url).toBe('https://www.googleapis.com/drive/v3/files');
+				expect(check.parameters.queryParameters.parameters[0].value).toBe(
+					"='{{ $('Find Folder').first().json.folderId }}' in parents and name='{{ $('Plan').first().json.files[" +
+						i +
+						"].quotedName }}' and trashed=false",
+				);
+				expect(check.credentials).toEqual({
+					googleDriveOAuth2Api: { name: 'Google Drive account' },
+				});
+				const download = node(wf, 'Download ' + label);
+				expect(download.parameters.url).toBe("={{ $('Plan').first().json.files[" + i + '].url }}');
+				expect(download.parameters.authentication).toBe('none');
+				expect(download.parameters.options.response.response).toEqual({
+					responseFormat: 'file',
+					outputPropertyName: option,
+				});
+				expect(download.credentials).toBeUndefined();
+				const upload = node(wf, 'Upload ' + label);
+				expect(upload.typeVersion).toBe(3);
+				expect(upload.parameters).toEqual({
+					inputDataFieldName: option,
+					name: "={{ $('Plan').first().json.files[" + i + '].fileName }}',
+					driveId: { __rl: true, mode: 'list', value: 'My Drive' },
+					folderId: {
+						__rl: true,
+						value: "={{ $('Find Folder').first().json.folderId }}",
+						mode: 'id',
+					},
+					options: {},
+				});
+				expect(upload.credentials).toEqual({
+					googleDriveOAuth2Api: { name: 'Google Drive account' },
+				});
+			}
+		});
+
+		it('keeps the Code nodes thin and inlines the three libs', () => {
+			const code = wf.nodes.filter((n) => n.type === 'n8n-nodes-base.code');
+			expect(code.map((n) => n.name).sort()).toEqual(
+				['Done', 'Failure', 'Plan', 'Stop', 'Suggest Dates', 'Validate'].sort(),
+			);
+			const template = require('../workflows/commands/invoice-zlecenie.template.json');
+			for (const n of template.nodes.filter((x) => x.type === 'n8n-nodes-base.code')) {
+				if (n.name === 'Stop') continue;
+				expect(n.parameters.jsCode.split('\n')[0], n.name).toBe(
+					'//@inline lib/invoice.js lib/driveFolder.js lib/invoiceFlow.js',
+				);
+				expect(n.parameters.jsCode.split('\n').length, n.name).toBeLessThanOrEqual(12);
+				if (n.name !== 'Done' && n.name !== 'Failure') {
+					expect(n.parameters.jsCode, n.name).toContain("('zlecenie'");
+				}
+			}
+			for (const n of code) expect(n.parameters.jsCode, n.name).not.toMatch(/\bthrow\b/);
+		});
+	});
+
+	describe('autocomplete', () => {
+		it('suggests dates for month_date', () => {
+			vi.useFakeTimers({ toFake: ['Date'] });
+			vi.setSystemTime(new Date(Date.UTC(2026, 7, 20, 10)));
+			const r = runZ({
+				mode: 'autocomplete',
+				input: { ...zInteraction({ month_date: '2026-07' }), kind: 'autocomplete' },
+			});
+			expect(r.reply).toEqual({ choices: [{ name: '2026-07-31', value: '2026-07-31' }] });
+		});
+	});
+
+	describe('validation', () => {
+		const cases = [
+			[
+				'a non-PDF bill',
+				zInteraction({}, {}, { content_type: 'image/png', filename: 'b.png' }),
+				'`bill` must be a PDF.',
+			],
+			[
+				'an oversize bill',
+				zInteraction({}, {}, { size: 20 * 1024 * 1024 + 1 }),
+				'`bill` is larger than 20 MB.',
+			],
+			['a missing bill', zInteraction({ bill: undefined }), '`bill` must be a PDF.'],
+			[
+				'a non-PDF timesheet',
+				zInteraction({}, { content_type: 'text/plain', filename: 't.txt' }),
+				'`timesheet` must be a PDF.',
+			],
+			[
+				'a bad date',
+				zInteraction({ month_date: '2026-13-01' }),
+				'`month_date` must be a date like 2026-08-31.',
+			],
+		];
+		for (const [label, input, copy] of cases) {
+			it(label + ' blocks both files before any download', () => {
+				const r = runZ({ input });
+				expect(r.reply).toEqual({ content: copy });
+				expect(r.order).not.toContain('Load Employees');
+				expect(r.calls.http).toEqual([]);
+				expect(r.calls.drive).toEqual([]);
+				expect(r.messages).toEqual([]);
+				expect(r.subCalls).toEqual([]);
+			});
+		}
+	});
+
+	describe('employee gate', () => {
+		it('not registered: the reply and the note', () => {
+			const r = runZ({ employees: [] });
+			expect(r.reply).toEqual({ content: replies.NOT_REGISTERED });
+			expect(r.messages).toEqual([
+				{ channelId: CHANNEL, content: notRegisteredNote('invoice-zlecenie', USER) },
+			]);
+		});
+
+		it('ambiguous: the reply and the note', () => {
+			const r = runZ({ employees: [ZROW, { ...ZROW, fullname: 'Anna Kowal' }] });
+			expect(r.reply).toEqual({ content: replies.AMBIGUOUS });
+			expect(r.messages).toEqual([
+				{ channelId: CHANNEL, content: ambiguousNote('invoice-zlecenie', USER, 2) },
+			]);
+		});
+
+		it('incomplete: contract is required, b2bentity is not', () => {
+			const r = runZ({ employees: [{ ...ZROW, contract: ' ' }] });
+			expect(r.reply).toEqual({ content: replies.INCOMPLETE });
+			expect(r.messages).toEqual([
+				{ channelId: CHANNEL, content: incompleteNote('invoice-zlecenie', USER, ['contract']) },
+			]);
+			expect(r.subCalls).toEqual([]);
+		});
+
+		it('an unreadable discord_config table fails at step config', () => {
+			const r = runZ({ tableErrors: { discord_config: 'Could not find data table' } });
+			expect(r.reply).toEqual({ content: replies.FAILED });
+			expect(r.stop.note).toBe(
+				failureNote('invoice-zlecenie', USER, 'config', 'Could not find data table', false),
+			);
+			expect(r.messages).toEqual([]);
+		});
+	});
+
+	describe('upload', () => {
+		it('saves both files into one folder and posts the Zlecenie notice', () => {
+			const r = runZ();
+			expect(r.reply).toEqual({
+				content:
+					'Uploaded `' +
+					TS_FILE +
+					'` to `2026/08 - Sierpień/ZLECENIE - Anna Nowak`.\nUploaded `' +
+					BILL_FILE +
+					'` to `2026/08 - Sierpień/ZLECENIE - Anna Nowak`.',
+			});
+			expect(r.messages).toEqual([{ channelId: CHANNEL, content: NOTICE }]);
+			expect(r.subCalls).toEqual([
+				{
+					node: 'Find Folder',
+					workflowId: 'helper-wf',
+					input: { rootId: 'ROOT', year: 2026, month: 8, personFolderName: ZPERSON },
+				},
+			]);
+			expect(r.calls.http.map((h) => [h.node, h.url])).toEqual([
+				['Check Timesheet', 'https://www.googleapis.com/drive/v3/files'],
+				['Download Timesheet', TS_URL],
+				['Check Bill', 'https://www.googleapis.com/drive/v3/files'],
+				['Download Bill', BILL_URL],
+			]);
+			expect(r.calls.http[0].query.q).toBe(
+				"'FOLDER2' in parents and name='" + TS_FILE + "' and trashed=false",
+			);
+			expect(r.calls.http[2].query.q).toBe(
+				"'FOLDER2' in parents and name='" + BILL_FILE + "' and trashed=false",
+			);
+			expect(r.calls.drive.map((d) => [d.node, d.name, d.folderId, d.binary])).toEqual([
+				['Upload Timesheet', TS_FILE, 'FOLDER2', TS_BYTES],
+				['Upload Bill', BILL_FILE, 'FOLDER2', BILL_BYTES],
+			]);
+			expect(r.order.slice(-3)).toEqual(['Done', 'Post Notice', 'Reply Success']);
+		});
+
+		it('builds both view links from the file ids when Drive returns only ids', () => {
+			const r = runZ({
+				drive: (req) => ({ json: { id: req.node === 'Upload Timesheet' ? 'T9' : 'B9' } }),
+			});
+			expect(r.messages[0].content).toContain(
+				'[Zobacz Godziny](https://drive.google.com/file/d/T9/view?usp=drivesdk)',
+			);
+			expect(r.messages[0].content).toContain(
+				'[Zobacz Rachunek](https://drive.google.com/file/d/B9/view?usp=drivesdk)',
+			);
+		});
+
+		it('says which file was already there', () => {
+			const r = runZ({
+				http: (req) =>
+					req.node === 'Check Bill' ? { json: { files: [{ id: 'OLD' }] } } : zHttp(req),
+			});
+			expect(r.reply.content.split('\n')).toEqual([
+				'Uploaded `' + TS_FILE + '` to `' + ZFOLDER.path + '`.',
+				'Uploaded `' + BILL_FILE + '` to `' + ZFOLDER.path + '`.',
+				'A file named `' + BILL_FILE + '` was already there; both are kept.',
+			]);
+		});
+
+		it('uses the full name when shortname is empty', () => {
+			const r = runZ({ employees: [{ ...ZROW, shortname: '' }] });
+			expect(r.messages[0].content).toContain('ten kurwipołeć **Anna Nowak** Podpisał');
+		});
+	});
+
+	describe('failures', () => {
+		it('the bill upload fails after the timesheet was saved: the note names the timesheet', () => {
+			const r = runZ({
+				drive: (req) =>
+					req.node === 'Upload Bill'
+						? { error: { message: 'Backend Error', httpCode: '500' } }
+						: zDrive(req),
+			});
+			failed(
+				r,
+				'bill: upload',
+				'Backend Error (HTTP 500); already uploaded: `' + TS_FILE + '`',
+				false,
+			);
+			expect(r.calls.drive.map((d) => d.node)).toEqual(['Upload Timesheet', 'Upload Bill']);
+			expect(r.order).not.toContain('Done');
+			expect(r.order).not.toContain('Post Notice');
+		});
+
+		it('an expired login on the bill upload keeps the auth line and the uploaded timesheet', () => {
+			const r = runZ({
+				drive: (req) =>
+					req.node === 'Upload Bill'
+						? { error: 'Authorization failed - please check your credentials' }
+						: zDrive(req),
+			});
+			failed(
+				r,
+				'bill: upload',
+				'Authorization failed - please check your credentials (HTTP 401); already uploaded: `' +
+					TS_FILE +
+					'`',
+				true,
+			);
+			expect(r.messages[0].content.endsWith('\n' + AUTH_LINE)).toBe(true);
+		});
+
+		it('a failed bill download names the timesheet and is not a login problem', () => {
+			const r = runZ({
+				http: (req) =>
+					req.node === 'Download Bill'
+						? { error: 'Forbidden - perhaps check your credentials?' }
+						: zHttp(req),
+			});
+			failed(
+				r,
+				'bill: download',
+				'Forbidden - perhaps check your credentials? (HTTP 403); already uploaded: `' +
+					TS_FILE +
+					'`',
+				false,
+			);
+			expect(r.calls.drive.map((d) => d.node)).toEqual(['Upload Timesheet']);
+		});
+
+		it('a failed bill duplicate check names the timesheet', () => {
+			const r = runZ({
+				http: (req) =>
+					req.node === 'Check Bill' ? { error: { message: 'invalid_grant' } } : zHttp(req),
+			});
+			failed(
+				r,
+				'bill: duplicate check',
+				'invalid_grant; already uploaded: `' + TS_FILE + '`',
+				true,
+			);
+		});
+
+		it('a failed timesheet upload stops before the bill and names nothing as uploaded', () => {
+			const r = runZ({
+				drive: (req) =>
+					req.node === 'Upload Timesheet'
+						? { error: { message: 'Backend Error', httpCode: '500' } }
+						: zDrive(req),
+			});
+			failed(r, 'timesheet: upload', 'Backend Error (HTTP 500)', false);
+			expect(r.order).not.toContain('Check Bill');
+			expect(r.calls.http.map((h) => h.node)).toEqual(['Check Timesheet', 'Download Timesheet']);
+		});
+
+		it('a failed timesheet download is not a login problem', () => {
+			const r = runZ({
+				http: (req) =>
+					req.node === 'Download Timesheet'
+						? { error: 'Request failed with status code 404' }
+						: zHttp(req),
+			});
+			failed(r, 'timesheet: download', 'Request failed with status code 404 (HTTP 404)', false);
+			expect(r.calls.drive).toEqual([]);
+		});
+
+		it('a helper error goes to the failure branch with nothing uploaded', () => {
+			const r = runZ({
+				folder: {
+					error: { step: 'person: create', message: 'invalid_grant', httpCode: 400, auth: true },
+				},
+			});
+			failed(r, 'person: create', 'invalid_grant (HTTP 400)', true);
+			expect(r.calls.http).toEqual([]);
+		});
+
+		it('a helper that returns no items fails at folder: call', () => {
+			const r = runZ({ folder: null });
+			failed(r, 'folder: call', 'no folder id returned', false);
+			expect(r.order[r.order.length - 1]).toBe('Reply');
+		});
+	});
+});

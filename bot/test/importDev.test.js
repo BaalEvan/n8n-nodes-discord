@@ -275,11 +275,11 @@ describe('importDev skip', () => {
 		expect(TABLES.drive_folders).toEqual(['path', 'folderId']);
 	});
 
-	it('tags only the nine command workflows, not the helper or the listener', async () => {
+	it('tags only the ten command workflows, not the helper or the listener', async () => {
 		const calls = stubApi();
 		await run(['router', 'sync']);
 		const tagged = calls.filter((c) => c.method === 'PUT' && c.p.endsWith('/tags'));
-		expect(tagged).toHaveLength(9);
+		expect(tagged).toHaveLength(10);
 	});
 
 	it('adds webhookBase only when it is missing', async () => {
@@ -458,7 +458,7 @@ describe('importDev skip', () => {
 	it('rejects an unknown key and lists the valid ones, before any request', async () => {
 		const calls = stubApi();
 		await expect(run(['routr'])).rejects.toThrow(
-			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, helpers/clickup-get-task, helpers/drive-folder, commands/changelog, commands/cl, commands/invoice-b2b, commands/parse, commands/preview, commands/prompt, commands/sync, listeners/sync-mirror, router',
+			'Unknown IMPORT_SKIP key "routr". Valid keys: sync, command-template, reload-commands, helpers/clickup-get-task, helpers/drive-folder, commands/changelog, commands/cl, commands/invoice-b2b, commands/invoice-zlecenie, commands/parse, commands/preview, commands/prompt, commands/sync, listeners/sync-mirror, router',
 		);
 		expect(calls).toEqual([]);
 	});
